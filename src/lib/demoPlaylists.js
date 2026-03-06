@@ -10,6 +10,10 @@ export const DEMO_PLAYLISTS = [
       tags: ["r&b", "late-night", "vibes"],
       createdAt: "2026-03-01T12:00:00Z",
       isPublic: true,
+      avgBpm: 124,
+      keys: ["8A", "9A"],
+      energy: 7,          // 1-10
+      clean: true,        // true=clean, false=explicit
     },
     {
       id: "p2",
@@ -22,6 +26,9 @@ export const DEMO_PLAYLISTS = [
       tags: ["afrobeats", "austin", "texas"],
       createdAt: "2026-03-03T18:00:00Z",
       isPublic: true,
+      keys: ["8A", "9A"],
+      energy: 7,          // 1-10
+      clean: true,
     },
     {
       id: "p3",
@@ -34,6 +41,9 @@ export const DEMO_PLAYLISTS = [
       tags: ["trap", "rap", "vibes"],
       createdAt: "2026-02-26T20:00:00Z",
       isPublic: true,
+      keys: ["8A", "9A"],
+      energy: 7,          // 1-10
+      clean: true,
     },
     {
       id: "p4",
@@ -58,5 +68,8 @@ export const DEMO_PLAYLISTS = [
       tags: ["vibes", "late-night", "rap"],
       createdAt: "2026-03-05T02:00:00Z",
       isPublic: true,
+      keys: ["8A", "9A"],
+      energy: 7,          // 1-10
+      clean: true,
     },
   ];
