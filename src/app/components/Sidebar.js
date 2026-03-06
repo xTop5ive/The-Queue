@@ -67,8 +67,8 @@ const Sidebar = () => {
         })}
       </div>
 
-      <label htmlFor="createNewPost" className="inBtn sidebarCreateBtn">
-        Create Post
+      <label htmlFor="createNewPlaylist" className="inBtn sidebarCreateBtn">
+        Create Playlist
       </label>
     </div>
   );
