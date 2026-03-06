@@ -38,7 +38,7 @@ const Navbar = () => {
     <>
       <div className="inNavbar">
         <Link href={"/"} className="inLogo">
-          InSocial
+          The Queue
         </Link>
         <div
           ref={ref}
