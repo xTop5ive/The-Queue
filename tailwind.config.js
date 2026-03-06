@@ -11,7 +11,17 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: {...colors.rose, DEFAULT: colors.rose[600]}
+        // The Queue — luxury club palette
+        ink: "#0A0B10",          // near-black
+        midnight: "#0E1020",     // deep navy/black
+        plum: "#5B2EFF",         // accent purple
+        violet: "#7C3AED",       // secondary accent
+        gold: "#D4AF37",         // gold highlight
+        fog: "rgba(255,255,255,0.72)",
+        line: "rgba(255,255,255,0.10)",
+
+        // Optional aliases so existing components that use `primary` don't break
+        primary: "#5B2EFF",
       },
       screens: {
         'mobile':  "960px",

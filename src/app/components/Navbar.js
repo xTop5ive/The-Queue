@@ -114,9 +114,9 @@ const Navbar = () => {
           <div className="mobileSearchBtn" onClick={() => setSearchPanel(true)}>
             <MdSearch />
           </div>
-          <label className="inBtn" htmlFor="createNewPost">
-            Create
-          </label>
+          <Link className="inBtn" href="/new">
+            Create Playlist
+          </Link>
           <div className="userProfile">
             <div
               className="userImage"

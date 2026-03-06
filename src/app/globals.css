@@ -2,24 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
+/* --------------------------- The Queue (Luxury Club) Palette --------------------------- */
+:root {
+  --ink: #0b0f1a;
+  --midnight: #121826;
+  --line: #222b3a;
+  --fog: #e5e7eb;
+  --muted: #9ca3af;
+  --plum: #6d28d9;
+  --gold: #d4af37;
+}
+
+/* Optional helpers you can reuse in JSX with className */
+.card {
+  @apply rounded-xl border;
+  background: var(--midnight);
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
+}
+
+.btnPrimary {
+  @apply text-white font-semibold;
+  background: var(--plum);
+}
+
+.btnPrimary:hover {
+  filter: brightness(1.05);
+}
+
+/* ------------------------------------------------------------------------------------ */
+
 ::-webkit-scrollbar {
   @apply w-[6px] h-[6px];
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-500 rounded-full;
+  @apply rounded-full;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
 }
 
 body {
-  @apply bg-gray-100;
+  @apply min-h-screen;
+  background: radial-gradient(1200px 600px at 15% 0%, color-mix(in srgb, var(--plum) 22%, transparent), transparent 60%),
+    radial-gradient(900px 500px at 90% 10%, color-mix(in srgb, var(--gold) 14%, transparent), transparent 55%),
+    var(--ink);
+  color: var(--fog);
 }
 
 .inNavbar {
-  @apply bg-white w-full h-[4rem] flex justify-between items-center px-4 shadow-lg;
+  @apply w-full h-[4rem] flex justify-between items-center px-4;
+  background: color-mix(in srgb, var(--midnight) 92%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  backdrop-filter: blur(10px);
 }
 
 .inNavbar .inLogo {
-  @apply text-2xl font-semibold text-gray-700 cursor-pointer hover:text-primary transition-colors duration-300;
+  @apply text-2xl font-semibold cursor-pointer transition-colors duration-300;
+  color: var(--fog);
+}
+
+.inNavbar .inLogo:hover {
+  color: var(--gold);
 }
 
 .inSearch {
@@ -40,11 +82,13 @@ body {
 }
 
 .inSearchWrapper {
-  @apply bg-gray-50 w-full border-[2px] px-2 py-2 flex items-center rounded-full transition-colors duration-300 ease-in-out;
+  @apply w-full px-3 py-2 flex items-center rounded-full transition-colors duration-300 ease-in-out;
+  background: color-mix(in srgb, var(--midnight) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
 }
 
 .inSearch.inSearchFocused .inSearchWrapper {
-  @apply bg-gray-200;
+  border-color: color-mix(in srgb, var(--plum) 55%, var(--line));
 }
 
 .inSearchWrapper .inIcon {
@@ -68,15 +112,31 @@ body {
 }
 
 .inSearchWrapper input {
-  @apply bg-transparent focus:outline-none w-full h-full text-gray-600;
+  @apply bg-transparent focus:outline-none w-full h-full;
+  color: var(--fog);
+}
+
+.inSearchWrapper input::placeholder {
+  color: color-mix(in srgb, var(--muted) 85%, transparent);
 }
 
 .inIcon {
-  @apply text-gray-600;
+  color: var(--muted);
 }
 
 .inBtn {
-  @apply bg-primary px-6 py-2 cursor-pointer rounded-full text-white hover:opacity-100 opacity-95 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-within:ring-offset-2;
+  @apply px-6 py-2 cursor-pointer rounded-full text-white transition-all duration-300 focus-visible:outline-none focus-visible:ring-2;
+  background: var(--plum);
+  box-shadow: 0 10px 30px -18px color-mix(in srgb, var(--plum) 70%, transparent);
+}
+
+.inBtn:hover {
+  filter: brightness(1.06);
+}
+
+.inBtn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--plum) 70%, transparent);
+  outline-offset: 2px;
 }
 
 .inNavRightOptions {
@@ -147,7 +207,7 @@ body {
 }
 
 .mainContainer {
-  @apply flex justify-between w-full mt-5 3xl:max-w-[60%] 3xl:mx-auto;
+  @apply flex justify-between w-full mt-6 3xl:max-w-[60%] 3xl:mx-auto;
 }
 
 /* --------------------------- Left Section --------------------------- */
@@ -157,7 +217,9 @@ body {
 }
 
 .leftSection .userProfileWidget {
-  @apply flex items-center bg-white w-full py-3 px-3 rounded-xl shadow-md;
+  @apply flex items-center w-full py-3 px-3 rounded-xl border;
+  background: var(--midnight);
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
 }
 
 .leftSection .userProfileWidget img {
@@ -171,12 +233,19 @@ body {
 
 .leftSection .userProfileWidget .userDetails .name,
 .rightSection .requestWidget .requestProfile .userDetails .name {
-  @apply text-base text-gray-700 font-bold hover:text-primary hover:cursor-pointer;
+  @apply text-base font-bold hover:cursor-pointer;
+  color: var(--fog);
+}
+
+.leftSection .userProfileWidget .userDetails .name:hover,
+.rightSection .requestWidget .requestProfile .userDetails .name:hover {
+  color: var(--gold);
 }
 
 .leftSection .userProfileWidget .userDetails .username,
 .rightSection .requestWidget .requestProfile .userDetails .username {
-  @apply text-xs text-gray-600;
+  @apply text-xs;
+  color: var(--muted);
 }
 
 .profileImage img {
@@ -184,7 +253,9 @@ body {
 }
 
 .inSidebar {
-  @apply bg-white mt-5 rounded-xl shadow-md overflow-hidden;
+  @apply mt-5 rounded-xl overflow-hidden border;
+  background: var(--midnight);
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
 }
 
 .inSidebar .link {
@@ -196,7 +267,7 @@ body {
 }
 
 .inSidebar .link:hover :is(svg, h3) {
-  @apply text-primary;
+  color: var(--gold);
 }
 
 .inSidebar .link h3 {
@@ -220,11 +291,14 @@ body {
 }
 
 .rightSection .requestWidget > h3 {
-  @apply my-1 font-semibold text-gray-800 ml-3;
+  @apply my-1 font-semibold ml-3;
+  color: var(--fog);
 }
 
 .rightSection .requestWidget .requestProfile {
-  @apply my-3 scale-95 bg-white shadow-md p-1 rounded-xl pt-5;
+  @apply my-3 scale-95 p-1 rounded-xl pt-5 border;
+  background: var(--midnight);
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
 }
 
 .rightSection .requestWidget .requestProfile .userDetails .name {
@@ -287,103 +361,118 @@ body {
   @apply w-full text-[.7rem] text-white absolute bottom-[.4rem] left-[.4rem] z-[1];
 }
 
-.createPostWidget {
+.createPlaylistWidget {
   @apply h-auto my-3 mx-4 bg-white rounded-full relative;
 }
 
-.createPostWidget.active {
+.createPlaylistWidget.active {
   @apply shadow-lg rounded-xl;
 }
 
-.createPostWidget .otherOptions {
+.createPlaylistWidget .otherOptions {
   @apply hidden;
 }
 
-.createPostWidget.active .otherOptions {
+.createPlaylistWidget.active .otherOptions {
   @apply flex justify-evenly flex-wrap;
 }
 
-.createPostWidget.active .otherOptions .option {
+.createPlaylistWidget.active .otherOptions .option {
   @apply flex items-center my-4 cursor-pointer;
 }
 
-.createPostWidget.active .otherOptions .option svg {
+.createPlaylistWidget.active .otherOptions .option svg {
   @apply mr-2 text-xl text-primary;
 }
 
-.createPostWidget.active .otherOptions .option span {
+.createPlaylistWidget.active .otherOptions .option span {
   @apply mr-2 text-sm hover:text-primary;
 }
 
-.createPostWidget .createInput {
+.createPlaylistWidget .createInput {
   @apply w-full flex h-auto px-3 py-2 justify-between;
 }
 
-.createPostWidget .createInput img {
+.createPlaylistWidget .createInput img {
   @apply w-[2.5rem] h-[2.5rem] rounded-full;
 }
 
-.createPostWidget .createInput input {
+.createPlaylistWidget .createInput input {
   @apply bg-transparent h-auto w-full mx-2 focus:outline-none;
 }
 
 /* --------------------------- Main Section End --------------------------- */
 
-/* --------------------------- Post --------------------------- */
+/* --------------------------- Playlist --------------------------- */
 
-.postWrapper {
-  @apply bg-white rounded-xl overflow-hidden shadow-xl mx-4 px-4 my-6;
+.PlaylistWrapper {
+  @apply rounded-xl overflow-hidden mx-4 px-4 my-6 border;
+  background: var(--midnight);
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
+  box-shadow: 0 20px 60px -45px rgba(0, 0, 0, 0.8);
 }
 
-.postWrapper .header {
+.PlaylistWrapper .header {
   @apply flex justify-between items-center my-3;
 }
 
-.postWrapper .header .left {
+.PlaylistWrapper .header .left {
   @apply flex items-center;
 }
 
-.postWrapper .header .right .option > svg {
-  @apply text-gray-600 text-xl cursor-pointer;
+.PlaylistWrapper .header .right .option > svg {
+  @apply text-xl cursor-pointer;
+  color: var(--muted);
 }
 
-.postWrapper .header .left .userDetails {
+.PlaylistWrapper .header .left .userDetails {
   @apply ml-3;
 }
 
-.postWrapper .header .left .userDetails .name {
-  @apply font-semibold text-gray-600 hover:text-primary cursor-pointer;
+.PlaylistWrapper .header .left .userDetails .name {
+  @apply font-semibold cursor-pointer;
+  color: var(--fog);
 }
 
-.postWrapper .header .left .userDetails .feeling {
-  @apply text-xs text-gray-600;
+.PlaylistWrapper .header .left .userDetails .name:hover {
+  color: var(--gold);
 }
 
-.postWrapper .header .left .profileImg {
+.PlaylistWrapper .header .left .userDetails .feeling {
+  @apply text-xs;
+  color: var(--muted);
+}
+
+.PlaylistWrapper .header .left .profileImg {
   @apply object-cover w-[2.8rem] h-[2.8rem] rounded-full;
 }
 
-.mainPostContent {
+.mainPlaylistContent {
   @apply flex justify-center;
 }
 
-.mainPostContent .postImage {
+.mainPlaylistContent .PlaylistImage {
   @apply max-w-full max-h-[20rem] my-4 rounded-xl w-full h-full object-cover;
 }
 
-.postFooter {
+.PlaylistFooter {
   @apply flex justify-between items-center my-3;
 }
 
-.postFooter .postActions {
+.PlaylistFooter .PlaylistActions {
   @apply flex justify-between items-center w-full mb-2;
 }
 
-.postFooter .postActions svg {
-  @apply mx-2 text-gray-600 text-2xl hover:text-gray-800 cursor-pointer h-[1.4rem] w-[1.4rem];
+.PlaylistFooter .PlaylistActions svg {
+  @apply mx-2 text-2xl cursor-pointer h-[1.4rem] w-[1.4rem];
+  color: var(--muted);
 }
 
-.postFooter .postActions .left {
+.PlaylistFooter .PlaylistActions svg:hover {
+  color: var(--fog);
+}
+
+.PlaylistFooter .PlaylistActions .left {
   @apply flex items-center;
 }
 
@@ -399,10 +488,11 @@ body {
   @apply text-[1.5rem] mt-2 text-gray-600;
 }
 
-/* --------------------------- Post End --------------------------- */
+/* --------------------------- Playlist End --------------------------- */
 
 .mobileSearchPanel {
-  @apply h-screen w-full bg-gray-100 fixed top-0 left-0 z-[99999];
+  @apply h-screen w-full fixed top-0 left-0 z-[99999];
+  background: var(--ink);
 }
 
 .mobileSearchPanel .closeBtn {
@@ -410,7 +500,9 @@ body {
 }
 
 .inMobileSearch {
-  @apply flex items-center bg-white justify-between h-[3rem] mx-4 px-3 rounded-full shadow-lg;
+  @apply flex items-center justify-between h-[3rem] mx-4 px-3 rounded-full border;
+  background: var(--midnight);
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
 }
 
 .inMobileSearch svg {
@@ -426,7 +518,9 @@ body {
 }
 
 .mobileSearchResult .mobileSearchItem {
-  @apply flex items-center px-3 py-2 cursor-pointer bg-white rounded-full mx-1 my-2 shadow-md;
+  @apply flex items-center px-3 py-2 cursor-pointer rounded-full mx-1 my-2 border;
+  background: var(--midnight);
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
 }
 
 .mobileSearchResult .mobileSearchItem .profileImage {

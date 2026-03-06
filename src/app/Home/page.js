@@ -4,7 +4,7 @@ import { MdSettings, MdInsertPhoto, MdEmojiEmotions } from "react-icons/md";
 import { BsFillCameraVideoFill } from "react-icons/bs";
 import { useClickOutside } from "@mantine/hooks";
 import userData from "@/app/UserData";
-import Post from "@/app/components/Post";
+import Playlist from "@/app/components/Playlist";
 import Sidebar from "@/app/components/Sidebar";
 
 const Page = () => {
@@ -36,17 +36,17 @@ const Page = () => {
           </div>
           <div
             ref={ref}
-            className={`createPostWidget ${isFocused ? "active" : ""}`}
+            className={`createPlaylistWidget ${isFocused ? "active" : ""}`}
           >
             <div className="createInput">
               <img src="/assets/image/avatar_default.jpg" alt="" />
               <input
                 type="text"
                 placeholder="What's on your mind, Jhon Doe?"
-                id="createNewPost"
+                id="createNewPlaylist"
                 onFocus={() => setIsFocused(true)}
               />
-              <button className="inBtn">Post</button>
+              <button className="inBtn">Playlist</button>
             </div>
             <div className="otherOptions">
               <div className="option">
@@ -64,7 +64,7 @@ const Page = () => {
             </div>
           </div>
           {userData.map((user, index) => {
-            return <Post key={index} userData={user} />
+            return <Playlist key={index} userData={user} />
           })}
         </div>
 
