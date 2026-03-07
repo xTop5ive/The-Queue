@@ -13,7 +13,7 @@ export const DEMO_PLAYLISTS = [
       avgBpm: 124,
       keys: ["8A", "9A"],
       energy: 7,          // 1-10
-      clean: true,        // true=clean, false=explicit
+      clean: false,        // true=clean, false=explicit
     },
     {
       id: "p2",
@@ -56,6 +56,9 @@ export const DEMO_PLAYLISTS = [
       tags: ["r&b", "rap", "vibes"],
       createdAt: "2026-03-04T09:00:00Z",
       isPublic: true,
+      keys: ["8A", "9A"],
+      energy: 7,          // 1-10
+      clean: false,
     },
     {
       id: "p5",
