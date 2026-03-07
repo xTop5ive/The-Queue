@@ -1,0 +1,29 @@
+# The Queue — Canvas Submission (Part B)
+
+## Repository Information
+- GitHub Repository URL: https://github.com/xTop5ive/The-Queue
+- Instructor Collaborator Added: abenaprimo (added as collaborator on GitHub)
+- Team Members (GitHub usernames):
+  - xTop5ive
+
+## Artifact Checklist (Where to Find Everything)
+
+### Documentation Folder
+- Revised SRS (PDF + source): `documentation/`
+  - PDF: `documentation/SRS.pdf` (or your exact filename)
+  - Source: `documentation/SRS.docx` (or your exact filename)
+- Updated Gantt chart (planned vs actual): `documentation/`
+  - `documentation/gantt.pdf` (or your exact filename)
+
+### Source Code Folder
+- Application source code: `src/`
+  - Next.js app routes: `src/app/`
+  - Reusable components: `src/app/components/` and/or `src/components/`
+  - Supabase helpers: `src/lib/`
+
+### Deployment & Setup Folder
+- Install + setup instructions: `deployment/INSTALL.md`
+
+### User Documentation Folder
+- User guide + screenshots: `user-docs/USER_GUIDE.md`
+- Screenshots: `user-docs/screenshots/`
