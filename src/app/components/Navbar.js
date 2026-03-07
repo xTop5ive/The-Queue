@@ -6,7 +6,6 @@ import { MdSearch, MdClose } from "react-icons/md";
 import { FaAngleRight } from "react-icons/fa";
 import { FaAngleDown, FaFaceFrown } from "react-icons/fa6";
 import { FaUserCircle, FaCompass } from "react-icons/fa";
-import { DEMO_PLAYLISTS } from "@/lib/demoPlaylists";
 import { motion } from "framer-motion";
 import { useClickOutside } from "@mantine/hooks";
 import { createBrowserClient } from "@/lib/supabase-browser";
@@ -104,12 +103,49 @@ const Navbar = () => {
     };
   }, []);
 
-  const searchPlaylists = (value) => {
+  const searchPlaylists = async (value) => {
     const v = (value || "").trim().toLowerCase();
+  
     if (!v) {
       setSearchedPlaylists([]);
       return;
     }
+  
+    try {
+      const supabase = supabaseRef.current;
+      if (!supabase) {
+        setSearchedPlaylists([]);
+        return;
+      }
+  
+      // Search title + description (simple + reliable)
+      const { data, error } = await supabase
+        .from("playlists")
+        .select("id,title,description,cover_url,likes_count,user_id,owner_handle,tags")
+        .eq("is_public", true)
+        .or(`title.ilike.%${v}%,description.ilike.%${v}%`)
+        .limit(8);
+  
+      if (error) throw error;
+  
+      // Map DB rows to what your UI expects
+      const results = (data || []).map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        coverUrl: row.cover_url,
+        likes: row.likes_count ?? 0,
+        tags: row.tags || [],
+        handle: row.owner_handle || "user",
+        userId: row.user_id,
+      }));
+  
+      setSearchedPlaylists(results);
+    } catch (err) {
+      console.log("Search error:", err);
+      setSearchedPlaylists([]);
+    }
+  
 
     const results = DEMO_PLAYLISTS
       .filter((p) => p.isPublic)
@@ -215,7 +251,9 @@ const Navbar = () => {
                     </div>
                     <div style={{ display: "flex", flexDirection: "column" }}>
                       <h3 style={{ margin: 0 }}>{p.title}</h3>
-                      <span style={{ fontSize: 12, opacity: 0.9, color: "#111" }}>by @{p.handle}</span>
+                      <span style={{ fontSize: 12, opacity: 0.9, color: "#111" }}>
+                          by {p.handle?.startsWith("@") ? p.handle : `@${p.handle}`}
+                      </span>
                     </div>
                   </div>
                 ))
@@ -432,7 +470,9 @@ const Navbar = () => {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   <h3 style={{ margin: 0 }}>{p.title}</h3>
-                  <span style={{ fontSize: 12, opacity: 0.9, color: "#111" }}>by @{p.handle}</span>
+                  <span style={{ fontSize: 12, opacity: 0.9, color: "#111" }}>
+                    by {p.handle?.startsWith("@") ? p.handle : `@${p.handle}`}
+                  </span>
                 </div>
               </div>
             ))

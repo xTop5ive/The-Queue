@@ -1,7 +1,10 @@
+// THIS FILE IS NOW A CLIENT COMPONENT, implementing real likes and correct handle display.
+"use client";
+
 import Link from "next/link";
-import { headers } from "next/headers";
-import { notFound } from "next/navigation";
-import { DEMO_PLAYLISTS } from "@/lib/demoPlaylists";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 
 function fmtDate(d) {
   try {
@@ -11,32 +14,309 @@ function fmtDate(d) {
   }
 }
 
-export default function PlaylistPage({ params, searchParams }) {
-  const { id } = params;
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const p = DEMO_PLAYLISTS.find((x) => x.id === id);
-  if (!p) return notFound();
+  if (!url || !anon) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  }
 
-  // Share URL (server-safe)
-  const h = headers();
-  const host = h.get("host") || "localhost:3000";
-  const proto = h.get("x-forwarded-proto") || "http";
-  const shareUrl = `${proto}://${host}/p/${p.id}`;
+  return createClient(url, anon, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
+}
 
-  // Demo like toggle via query param (?liked=1)
-  const liked = searchParams?.liked === "1";
-  const likeHref = liked ? `/p/${p.id}` : `/p/${p.id}?liked=1`;
+function fmtHandle(h) {
+  const v = (h || "").trim();
+  if (!v) return "@unknown";
+  return v.startsWith("@") ? v : `@${v}`;
+}
 
-  const moreBy = DEMO_PLAYLISTS.filter(
-    (x) => x.isPublic && x.handle === p.handle && x.id !== p.id
-  ).slice(0, 6);
+async function resolveOwnerHandle({ supabase, playlistUserId, viewerUser }) {
+  // 1) If viewer owns the playlist, we can use their auth metadata (client-safe).
+  if (viewerUser?.id && playlistUserId && viewerUser.id === playlistUserId) {
+    const raw =
+      viewerUser?.user_metadata?.handle ||
+      viewerUser?.user_metadata?.username ||
+      viewerUser?.email?.split("@")[0] ||
+      "user";
+    return fmtHandle(raw);
+  }
+
+  // 2) Best-effort: if you have a public `profiles` table with a `handle` column, use it.
+  //    (If it doesn't exist, we fall back quietly.)
+  try {
+    if (playlistUserId) {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("handle, username")
+        .eq("id", playlistUserId)
+        .maybeSingle();
+
+      const raw = prof?.handle || prof?.username;
+      if (raw) return fmtHandle(raw);
+    }
+  } catch {
+    // ignore
+  }
+
+  // 3) Fallback
+  return "@user";
+}
+
+export default function PlaylistPage() {
+  const params = useParams();
+  const router = useRouter();
+  const sp = useSearchParams();
+
+  const id = typeof params?.id === "string" ? params.id : Array.isArray(params?.id) ? params.id[0] : "";
+
+  const supabase = useMemo(() => getSupabase(), []);
+
+  const [loading, setLoading] = useState(true);
+  const [p, setP] = useState(null);
+  const [moreBy, setMoreBy] = useState([]);
+  const [shareUrl, setShareUrl] = useState("");
+
+  const [ownerHandle, setOwnerHandle] = useState("@user");
+
+  const [user, setUser] = useState(null);
+  const [liked, setLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [likeBusy, setLikeBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  const likedQP = sp?.get("liked") === "1";
 
   // demo comments (stub)
-  const comments = [
-    { id: "c1", user: "@dj5ive", text: "This playlist is insane. The transitions are clean.", time: "2h" },
-    { id: "c2", user: "@lateNightVibes", text: "Need a part 2 of this one.", time: "5h" },
-    { id: "c3", user: "@austinlinks", text: "Perfect for a night drive downtown.", time: "1d" },
-  ];
+  const comments = useMemo(
+    () => [
+      { id: "c1", user: "@dj5ive", text: "This playlist is insane. The transitions are clean.", time: "2h" },
+      { id: "c2", user: "@lateNightVibes", text: "Need a part 2 of this one.", time: "5h" },
+      { id: "c3", user: "@austinlinks", text: "Perfect for a night drive downtown.", time: "1d" },
+    ],
+    []
+  );
+
+  const refreshLikeState = useCallback(
+    async (playlistId, currentUserId) => {
+      // likesCount
+      const { count } = await supabase
+        .from("playlist_likes")
+        .select("id", { count: "exact", head: true })
+        .eq("playlist_id", playlistId);
+
+      setLikesCount(typeof count === "number" ? count : 0);
+
+      if (!currentUserId) {
+        setLiked(false);
+        return;
+      }
+
+      const { data: likeRow } = await supabase
+        .from("playlist_likes")
+        .select("id")
+        .eq("playlist_id", playlistId)
+        .eq("user_id", currentUserId)
+        .maybeSingle();
+
+      setLiked(!!likeRow);
+    },
+    [supabase]
+  );
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        setLoading(true);
+
+        // Share URL (client)
+        if (typeof window !== "undefined" && id) {
+          setShareUrl(`${window.location.origin}/p/${id}`);
+        }
+
+        // Auth user
+        const { data: auth } = await supabase.auth.getUser();
+        const u = auth?.user || null;
+        if (alive) setUser(u);
+
+        // Playlist
+        const { data: row, error } = await supabase.from("playlists").select("*").eq("id", id).single();
+        if (error || !row) {
+          // keep it simple: bounce to explore
+          router.replace("/explore");
+          return;
+        }
+
+        // normalize field names so the rest of the UI can stay the same
+        const normalized = {
+          ...row,
+          coverUrl: row.cover_url ?? row.coverUrl,
+          createdAt: row.created_at ?? row.createdAt,
+          isPublic: row.is_public ?? row.isPublic,
+          likes: row.likes_count ?? row.likes ?? 0,
+          // NOTE: playlists table uses `user_id` as the owner
+          userId: row.user_id ?? row.userId,
+        };
+
+        if (alive) setP(normalized);
+
+        // Resolve and store display handle
+        const resolved = await resolveOwnerHandle({
+          supabase,
+          playlistUserId: normalized.userId,
+          viewerUser: u,
+        });
+        if (alive) setOwnerHandle(resolved);
+
+        // More by creator (use `user_id` since playlists table doesn't store owner_handle)
+        const ownerId = normalized.userId;
+        if (ownerId) {
+          const { data: rows } = await supabase
+            .from("playlists")
+            .select("*")
+            .eq("user_id", ownerId)
+            .neq("id", normalized.id)
+            .eq("is_public", true)
+            .limit(6);
+
+          const mapped = (rows || []).map((r) => ({
+            ...r,
+            coverUrl: r.cover_url ?? r.coverUrl,
+            createdAt: r.created_at ?? r.createdAt,
+            isPublic: r.is_public ?? r.isPublic,
+            likes: r.likes_count ?? r.likes ?? 0,
+            userId: r.user_id ?? r.userId,
+          }));
+
+          if (alive) setMoreBy(mapped);
+        } else {
+          if (alive) setMoreBy([]);
+        }
+
+        // Real likes
+        await refreshLikeState(row.id, u?.id);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [id, router, supabase, refreshLikeState]);
+
+  useEffect(() => {
+    // if someone uses the old demo toggle, keep UI in sync but prefer real likes
+    if (likedQP) setLiked(true);
+  }, [likedQP]);
+
+  async function toggleLike() {
+    if (!p?.id) return;
+    if (!user?.id) {
+      router.push(`/login?next=${encodeURIComponent(`/p/${p.id}`)}`);
+      return;
+    }
+
+    if (likeBusy) return;
+    setLikeBusy(true);
+
+    try {
+      if (liked) {
+        // unlike
+        await supabase.from("playlist_likes").delete().eq("playlist_id", p.id).eq("user_id", user.id);
+      } else {
+        // like
+        await supabase.from("playlist_likes").insert({ playlist_id: p.id, user_id: user.id });
+      }
+
+      // re-count + store on playlists for fast reads elsewhere
+      const { count } = await supabase
+        .from("playlist_likes")
+        .select("id", { count: "exact", head: true })
+        .eq("playlist_id", p.id);
+
+      const newCount = typeof count === "number" ? count : 0;
+      setLikesCount(newCount);
+      setLiked((v) => !v);
+
+      // best-effort update (ignore errors if RLS blocks)
+      await supabase.from("playlists").update({ likes_count: newCount }).eq("id", p.id);
+
+      // keep local row in sync
+      setP((prev) => (prev ? { ...prev, likes: newCount } : prev));
+    } finally {
+      setLikeBusy(false);
+    }
+  }
+
+  async function deletePlaylist() {
+    if (!p?.id) return;
+
+    // must be logged in
+    if (!user?.id) {
+      router.push(`/login?next=${encodeURIComponent(`/p/${p.id}`)}`);
+      return;
+    }
+
+    // must own the playlist (DB uses user_id)
+    const ownerId = p.userId ?? p.user_id;
+    if (!ownerId || ownerId !== user.id) {
+      alert("You can only delete playlists you created.");
+      return;
+    }
+
+    const ok = confirm(`Delete "${p.title}"? This cannot be undone.`);
+    if (!ok) return;
+
+    if (deleteBusy) return;
+    setDeleteBusy(true);
+
+    try {
+      // 1) delete cover from Storage (best-effort)
+      const bucket = "covers"; // case-sensitive
+      const coverPath = p.cover_path ?? p.coverPath ?? null;
+      if (coverPath) {
+        await supabase.storage.from(bucket).remove([coverPath]);
+      }
+
+      // 2) delete likes rows (best-effort)
+      await supabase.from("playlist_likes").delete().eq("playlist_id", p.id);
+
+      // 3) delete playlist row (owner-only)
+      const { error } = await supabase
+        .from("playlists")
+        .delete()
+        .eq("id", p.id)
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+
+      // 4) back to explore
+      router.replace("/explore");
+    } catch (e) {
+      alert(e?.message || "Could not delete playlist.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  if (loading || !p) {
+    return (
+      <div className="max-w-6xl mx-auto px-5 pt-10 pb-28">
+        <div className="card p-6 text-white/70">Loading playlist…</div>
+      </div>
+    );
+  }
+
+  const handle = ownerHandle;
 
   return (
     <div className="max-w-6xl mx-auto px-5 pt-10 pb-28">
@@ -45,9 +325,7 @@ export default function PlaylistPage({ params, searchParams }) {
         <Link href="/explore" className="text-sm underline text-white/70 hover:text-white">
           ← Back to Explore
         </Link>
-        <div className="text-xs text-white/50">
-          Updated {fmtDate(p.createdAt)}
-        </div>
+        <div className="text-xs text-white/50">Updated {fmtDate(p.createdAt)}</div>
       </div>
 
       {/* Hero */}
@@ -56,7 +334,7 @@ export default function PlaylistPage({ params, searchParams }) {
           {/* Cover */}
           <div className="relative">
             <img
-              src={p.coverUrl}
+              src={p.coverUrl || "/placeholder-cover.png"}
               alt=""
               className="w-full object-cover"
               style={{ height: 280 }}
@@ -81,20 +359,16 @@ export default function PlaylistPage({ params, searchParams }) {
               Playlist
             </div>
 
-            <h1 className="mt-2 text-4xl md:text-5xl font-semibold tracking-tight">
-              {p.title}
-            </h1>
+            <h1 className="mt-2 text-4xl md:text-5xl font-semibold tracking-tight">{p.title}</h1>
 
-            <p className="mt-3 text-white/70 max-w-2xl">
-              {p.description}
-            </p>
+            <p className="mt-3 text-white/70 max-w-2xl">{p.description}</p>
 
             <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
               <span className="text-white/80">
-                by <span style={{ color: "var(--gold)" }}>{p.handle}</span>
+                by <span style={{ color: "var(--gold)" }}>{handle}</span>
               </span>
               <span className="text-white/40">•</span>
-              <span className="text-white/70">♥ {p.likes} likes</span>
+              <span className="text-white/70">♥ {likesCount || p.likes || 0} likes</span>
               <span className="text-white/40">•</span>
               <span className="text-white/70">{(p.tags || []).length} tags</span>
             </div>
@@ -105,22 +379,25 @@ export default function PlaylistPage({ params, searchParams }) {
                 ▶ Play (demo)
               </button>
 
-              {/* Like (demo toggle via query param) */}
-              <Link
-                href={likeHref}
+              {/* Like (REAL) */}
+              <button
+                type="button"
+                onClick={toggleLike}
                 className="px-4 py-2 rounded-full border text-sm inline-flex items-center gap-2"
+                disabled={likeBusy}
                 style={{
                   borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
                   background: liked
                     ? "color-mix(in srgb, var(--gold) 18%, transparent)"
                     : "color-mix(in srgb, var(--midnight) 85%, transparent)",
                   color: "var(--fog)",
+                  opacity: likeBusy ? 0.7 : 1,
                 }}
-                aria-label={liked ? "Unlike (demo)" : "Like (demo)"}
+                aria-label={liked ? "Unlike" : "Like"}
               >
                 <span aria-hidden>{liked ? "♥" : "♡"}</span>
                 <span>{liked ? "Liked" : "Like"}</span>
-              </Link>
+              </button>
 
               {/* Share (no JS): mail + tweet */}
               <a
@@ -161,12 +438,27 @@ export default function PlaylistPage({ params, searchParams }) {
                 + Save (stub)
               </button>
 
+              {(p.userId ?? p.user_id) === user?.id ? (
+                <button
+                  type="button"
+                  onClick={deletePlaylist}
+                  disabled={deleteBusy}
+                  className="px-4 py-2 rounded-full border text-sm"
+                  style={{
+                    borderColor: "color-mix(in srgb, #ff4d4d 55%, transparent)",
+                    background: "color-mix(in srgb, #ff4d4d 12%, transparent)",
+                    color: "white",
+                    opacity: deleteBusy ? 0.7 : 1,
+                  }}
+                >
+                  {deleteBusy ? "Deleting…" : "Delete"}
+                </button>
+              ) : null}
+
               <Link
                 href="/explore"
                 className="px-4 py-2 rounded-full border text-sm"
-                style={{
-                  borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                }}
+                style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
               >
                 Browse more
               </Link>
@@ -182,7 +474,7 @@ export default function PlaylistPage({ params, searchParams }) {
               {(p.tags || []).slice(0, 10).map((t) => (
                 <Link
                   key={t}
-                  href={`/explore?tags=${encodeURIComponent(t.toLowerCase())}`}
+                  href={`/explore?tags=${encodeURIComponent(String(t).toLowerCase())}`}
                   className="px-3 py-1 rounded-full border text-sm"
                   style={{
                     background: "transparent",
@@ -201,7 +493,8 @@ export default function PlaylistPage({ params, searchParams }) {
                 <span className="text-sm text-white/50">Coming next</span>
               </div>
 
-              <div className="mt-3 border rounded-xl overflow-hidden"
+              <div
+                className="mt-3 border rounded-xl overflow-hidden"
                 style={{ borderColor: "color-mix(in srgb, var(--line) 75%, transparent)" }}
               >
                 {["Intro (stub)", "Main vibe (stub)", "Closer (stub)"].map((name, idx) => (
@@ -210,7 +503,8 @@ export default function PlaylistPage({ params, searchParams }) {
                     className="flex items-center justify-between px-4 py-3"
                     style={{
                       background: idx % 2 ? "color-mix(in srgb, var(--midnight) 92%, transparent)" : "transparent",
-                      borderTop: idx === 0 ? "none" : "1px solid color-mix(in srgb, var(--line) 70%, transparent)",
+                      borderTop:
+                        idx === 0 ? "none" : "1px solid color-mix(in srgb, var(--line) 70%, transparent)",
                     }}
                   >
                     <div className="flex items-center gap-3 min-w-0">
@@ -235,7 +529,7 @@ export default function PlaylistPage({ params, searchParams }) {
       <div className="mt-10">
         <div className="flex items-end justify-between">
           <div>
-            <h2 className="text-2xl font-semibold">More by {p.handle}</h2>
+            <h2 className="text-2xl font-semibold">More by {handle}</h2>
             <p className="text-white/60 text-sm mt-1">More public playlists from this creator.</p>
           </div>
           <Link href="/explore" className="text-sm underline text-white/70 hover:text-white">
@@ -288,7 +582,7 @@ export default function PlaylistPage({ params, searchParams }) {
           </div>
         ) : (
           <div className="card p-6 mt-4">
-            <p className="text-white/60">No other public playlists yet. (Demo data)</p>
+            <p className="text-white/60">No other public playlists yet.</p>
           </div>
         )}
       </div>
@@ -332,9 +626,15 @@ export default function PlaylistPage({ params, searchParams }) {
                   </div>
                   <div className="text-white/80 text-sm mt-1">{c.text}</div>
                   <div className="mt-2 flex items-center gap-4 text-xs text-white/50">
-                    <button type="button" className="hover:text-white/70">Like</button>
-                    <button type="button" className="hover:text-white/70">Reply</button>
-                    <button type="button" className="hover:text-white/70">Share</button>
+                    <button type="button" className="hover:text-white/70">
+                      Like
+                    </button>
+                    <button type="button" className="hover:text-white/70">
+                      Reply
+                    </button>
+                    <button type="button" className="hover:text-white/70">
+                      Share
+                    </button>
                   </div>
                 </div>
               </div>
@@ -354,11 +654,12 @@ export default function PlaylistPage({ params, searchParams }) {
       >
         <div className="max-w-6xl mx-auto px-5 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-12 h-12 rounded-lg overflow-hidden border flex-shrink-0"
+            <div
+              className="w-12 h-12 rounded-lg overflow-hidden border flex-shrink-0"
               style={{ borderColor: "color-mix(in srgb, var(--line) 75%, transparent)" }}
             >
               <img
-                src={p.coverUrl}
+                src={p.coverUrl || "/placeholder-cover.png"}
                 alt=""
                 className="w-full h-full object-cover"
                 loading="lazy"
@@ -368,7 +669,7 @@ export default function PlaylistPage({ params, searchParams }) {
             <div className="min-w-0">
               <div className="text-sm font-semibold truncate">{p.title}</div>
               <div className="text-xs" style={{ color: "var(--muted)" }}>
-                Playing: Track 1 (stub) • {p.handle}
+                Playing: Track 1 (stub) • {handle}
               </div>
             </div>
           </div>
@@ -399,27 +700,49 @@ export default function PlaylistPage({ params, searchParams }) {
               ⏭
             </button>
 
-            <div className="w-px h-7 mx-1" style={{ background: "color-mix(in srgb, var(--line) 70%, transparent)" }} />
+            <div
+              className="w-px h-7 mx-1"
+              style={{ background: "color-mix(in srgb, var(--line) 70%, transparent)" }}
+            />
 
-            <Link
-              href={likeHref}
+            <button
+              type="button"
+              onClick={toggleLike}
               className="px-3 py-2 rounded-full border text-sm"
               style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-              aria-label={liked ? "Unlike (demo)" : "Like (demo)"}
-              title={liked ? "Unlike (demo)" : "Like (demo)"}
+              aria-label={liked ? "Unlike" : "Like"}
+              title={liked ? "Unlike" : "Like"}
             >
               {liked ? "♥" : "♡"}
-            </Link>
+            </button>
 
             <a
               href={`mailto:?subject=${encodeURIComponent(`The Queue • ${p.title}`)}&body=${encodeURIComponent(shareUrl)}`}
               className="px-3 py-2 rounded-full border text-sm"
               style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-              aria-label="Share (demo)"
-              title="Share (demo)"
+              aria-label="Share"
+              title="Share"
             >
               ↗
             </a>
+
+            {(p.userId ?? p.user_id) === user?.id ? (
+              <button
+                type="button"
+                onClick={deletePlaylist}
+                disabled={deleteBusy}
+                className="px-3 py-2 rounded-full border text-sm"
+                style={{
+                  borderColor: "color-mix(in srgb, #ff4d4d 55%, transparent)",
+                  background: "transparent",
+                  opacity: deleteBusy ? 0.7 : 1,
+                }}
+                aria-label="Delete playlist"
+                title="Delete playlist"
+              >
+                🗑
+              </button>
+            ) : null}
           </div>
         </div>
 
