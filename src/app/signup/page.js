@@ -1,14 +1,53 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase-browser";
 
+function normalizeHandle(raw, email) {
+  const emailPrefix = (email || "").split("@")[0] || "user";
+  let h = (raw || emailPrefix || "user").trim().toLowerCase();
+
+  // allow letters, numbers, underscore, dot (common handle rules)
+  h = h.replace(/\s+/g, "");
+  h = h.replace(/[^a-z0-9_.]/g, "");
+
+  // prevent empty
+  if (!h) h = "user";
+
+  // keep metadata without @ (your DB trigger can add @ if you choose)
+  return h;
+}
+
+function prettyAuthError(message) {
+  const m = (message || "").toLowerCase();
+
+  if (m.includes("email prefix") && m.includes("already taken")) {
+    return "That email prefix is already taken (everything before @). Try a different email.";
+  }
+  if (m.includes("handle") && m.includes("already taken")) {
+    return "That handle is already taken. Try a different one.";
+  }
+  if (m.includes("invalid login credentials")) {
+    return "That email/password combo doesn’t match.";
+  }
+  if (m.includes("password") && m.includes("6")) {
+    return "Password must be at least 6 characters.";
+  }
+  if (m.includes("email") && m.includes("invalid")) {
+    return "That email doesn’t look valid.";
+  }
+
+  return message || "Something went wrong.";
+}
+
 export default function SignupPage() {
-  const supabase = createBrowserClient();
   const router = useRouter();
   const sp = useSearchParams();
   const next = sp.get("next") || "/";
+
+  // keep a stable client instance
+  const supabase = useMemo(() => createBrowserClient(), []);
 
   const [name, setName] = useState("");
   const [handle, setHandle] = useState("");
@@ -31,7 +70,58 @@ export default function SignupPage() {
     setLoading(true);
 
     const cleanedEmail = email.trim().toLowerCase();
-    const cleanedHandle = (handle || cleanedEmail.split("@")[0] || "user").trim().toLowerCase();
+    const emailPrefix = cleanedEmail.split("@")[0] || "";
+    const cleanedHandle = normalizeHandle(handle, cleanedEmail);
+
+    // quick client-side validations
+    if (!cleanedEmail || !cleanedEmail.includes("@")) {
+      setLoading(false);
+      setMsg("Enter a valid email.");
+      return;
+    }
+    if (!password || password.length < 6) {
+      setLoading(false);
+      setMsg("Password must be at least 6 characters.");
+      return;
+    }
+    if (cleanedHandle.length < 2) {
+      setLoading(false);
+      setMsg("Handle must be at least 2 characters.");
+      return;
+    }
+
+    // Best-effort availability check (works only if profiles table is readable)
+    try {
+      // email prefix uniqueness
+      if (emailPrefix) {
+        const { data: prefHit } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("email_prefix", emailPrefix)
+          .maybeSingle();
+
+        if (prefHit?.id) {
+          setLoading(false);
+          setMsg("That email prefix is already taken (everything before @). Try a different email.");
+          return;
+        }
+      }
+
+      // handle uniqueness (@handle or handle)
+      const { data: handleHit } = await supabase
+        .from("profiles")
+        .select("id")
+        .or(`handle.eq.@${cleanedHandle},handle.eq.${cleanedHandle}`)
+        .maybeSingle();
+
+      if (handleHit?.id) {
+        setLoading(false);
+        setMsg("That handle is already taken. Try a different one.");
+        return;
+      }
+    } catch {
+      // ignore – DB trigger/unique constraints will still enforce
+    }
 
     const { data, error } = await supabase.auth.signUp({
       email: cleanedEmail,
@@ -39,7 +129,7 @@ export default function SignupPage() {
       options: {
         data: {
           full_name: name.trim() || cleanedHandle,
-          handle: cleanedHandle,
+          handle: cleanedHandle, // stored in auth metadata; DB trigger can turn into @handle
         },
       },
     });
@@ -47,7 +137,7 @@ export default function SignupPage() {
     setLoading(false);
 
     if (error) {
-      setMsg(error.message);
+      setMsg(prettyAuthError(error.message));
       return;
     }
 
@@ -74,18 +164,24 @@ export default function SignupPage() {
           onChange={(e) => setName(e.target.value)}
           style={inputStyle}
         />
+
         <input
           placeholder="Handle (optional, ex: whatsup5ive)"
           value={handle}
           onChange={(e) => setHandle(e.target.value)}
           style={inputStyle}
         />
+        <div style={{ fontSize: 12, opacity: 0.7, marginTop: -6 }}>
+          Your handle will display as <b>@{normalizeHandle(handle, email)}</b>
+        </div>
+
         <input
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           style={inputStyle}
         />
+
         <input
           placeholder="Password (min 6 chars)"
           type="password"
