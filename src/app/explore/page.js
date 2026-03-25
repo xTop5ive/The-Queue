@@ -410,6 +410,9 @@ export default function ExplorePage() {
     setKeyText("");
     setCleanOnly(false);
     setEnergyMinVal(0);
+    setSuggestOpen(false);
+    setSuggestItems([]);
+    setSuggestActive(-1);
     // Keep current sort, but remove all other params
     router.push(buildExploreHref({ sort }));
   }
@@ -896,7 +899,16 @@ export default function ExplorePage() {
           <h3 className="text-lg font-semibold">No matches</h3>
           <p className="text-white/60 mt-1">Try clearing filters, searching a different vibe, or selecting fewer tags.</p>
           <div className="mt-4">
-            <button type="button" onClick={clearAll} className="btn btnPrimary">
+            <button
+              type="button"
+              onClick={clearAll}
+              className="px-5 py-2 rounded-full text-sm font-semibold inline-flex items-center gap-2"
+              style={{
+                background: "color-mix(in srgb, var(--purple) 85%, black)",
+                color: "white",
+                border: "1px solid color-mix(in srgb, var(--purple) 50%, transparent)",
+              }}
+            >
               Reset Explore
             </button>
           </div>

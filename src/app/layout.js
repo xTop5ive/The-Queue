@@ -1,20 +1,21 @@
 import "./globals.css";
-import { Inter } from "next/font/google";
-import Navbar from "./components/Navbar";
 
-const inter = Inter({ subsets: ["latin"] });
+// App chrome
+import Navbar from "@/app/components/Navbar";
 
-export const metadata = {
-  title: "The Queue",
-  description: "Music is unity",
-};
+// Global player (Option B: keep playing while browsing)
+import { PlayerProvider } from "@/app/components/player/PlayerProvider";
+import StickyPlayerBar from "@/app/components/player/StickyPlayerBar";
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
-        <Navbar />
-        {children}
+      <body className="min-h-screen">
+        <PlayerProvider>
+          <Navbar />
+          {children}
+          <StickyPlayerBar />
+        </PlayerProvider>
       </body>
     </html>
   );
