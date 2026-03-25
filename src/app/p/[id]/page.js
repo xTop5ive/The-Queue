@@ -37,6 +37,41 @@ function fmtHandle(h) {
   return v.startsWith("@") ? v : `@${v}`;
 }
 
+// Extract a usable YouTube video id from either a raw id or a URL.
+function extractYouTubeId(input) {
+  const v = (input || "").toString().trim();
+  if (!v) return "";
+
+  // Raw id like "dQw4w9WgXcQ"
+  if (/^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+
+  try {
+    const u = new URL(v);
+
+    // youtu.be/<id>
+    if (u.hostname.includes("youtu.be")) {
+      const id = u.pathname.split("/").filter(Boolean)[0] || "";
+      return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : "";
+    }
+
+    // youtube.com/watch?v=<id>
+    const qid = u.searchParams.get("v") || "";
+    if (/^[a-zA-Z0-9_-]{11}$/.test(qid)) return qid;
+
+    // youtube.com/embed/<id>
+    const parts = u.pathname.split("/").filter(Boolean);
+    const embedIdx = parts.indexOf("embed");
+    if (embedIdx >= 0 && parts[embedIdx + 1]) {
+      const id = parts[embedIdx + 1];
+      return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : "";
+    }
+  } catch {
+    // not a URL
+  }
+
+  return "";
+}
+
 async function resolveOwnerHandle({ supabase, playlistUserId, viewerUser }) {
   // 1) If viewer owns the playlist, we can use their auth metadata (client-safe).
   if (viewerUser?.id && playlistUserId && viewerUser.id === playlistUserId) {
@@ -90,6 +125,17 @@ export default function PlaylistPage() {
   const [likesCount, setLikesCount] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+
+  // --- Simple YouTube player state (Option B MVP) ---
+  // NOTE: This keeps playback while you stay on THIS page.
+  // To keep playing across the whole app, move the player into src/app/layout.js later.
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Tracks loaded from public.playlist_tracks
+  // Track shape: { id, position, title, artist, youtube_video_id }
+  const [tracks, setTracks] = useState([]);
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
+  const [currentVideoId, setCurrentVideoId] = useState("");
 
   const likedQP = sp?.get("liked") === "1";
 
@@ -164,9 +210,48 @@ export default function PlaylistPage() {
           likes: row.likes_count ?? row.likes ?? 0,
           // NOTE: playlists table uses `user_id` as the owner
           userId: row.user_id ?? row.userId,
+          // Optional: YouTube video id for Option B
+          youtubeId: row.youtube_video_id ?? row.youtubeId ?? null,
         };
 
         if (alive) setP(normalized);
+
+        // --- Load tracks for this playlist (multi-song) ---
+        // We store track-level YouTube IDs in public.playlist_tracks.
+        // If there are no tracks yet, we fall back to the optional playlists.youtube_video_id.
+        const { data: trackRows, error: trackErr } = await supabase
+          .from("playlist_tracks")
+          .select("id, position, title, artist, youtube_video_id")
+          .eq("playlist_id", id)
+          .order("position", { ascending: true });
+
+        if (!trackErr) {
+          const list = (trackRows || []).map((t) => ({
+            id: t.id,
+            position: t.position,
+            title: t.title,
+            artist: t.artist,
+            youtube_video_id: t.youtube_video_id,
+          }));
+
+          if (alive) setTracks(list);
+
+          // Choose initial current track
+          if (list.length) {
+            const firstId = extractYouTubeId(list[0]?.youtube_video_id);
+            if (alive) {
+              setCurrentTrackIndex(0);
+              setCurrentVideoId(firstId || "");
+            }
+          } else {
+            // Fallback to single playlist-level field (optional)
+            const fallback = extractYouTubeId(normalized.youtubeId);
+            if (alive) {
+              setCurrentTrackIndex(0);
+              setCurrentVideoId(fallback || "");
+            }
+          }
+        }
 
         // Resolve and store display handle
         const resolved = await resolveOwnerHandle({
@@ -317,6 +402,67 @@ export default function PlaylistPage() {
   }
 
   const handle = ownerHandle;
+  const isOwner = (p.userId ?? p.user_id) && user?.id && (p.userId ?? p.user_id) === user.id;
+
+  // Play a specific track index from this playlist
+  function playAt(idx) {
+    const safeIdx = Math.max(0, Math.min(idx, Math.max(0, tracks.length - 1)));
+
+    // If there are real tracks, use them
+    if (tracks.length) {
+      const raw = tracks[safeIdx]?.youtube_video_id || "";
+      const vid = extractYouTubeId(raw);
+
+      if (!vid) {
+        alert("That track is missing a valid YouTube video id.");
+        return;
+      }
+
+      setCurrentTrackIndex(safeIdx);
+      setCurrentVideoId(vid);
+      setIsPlaying(true);
+      return;
+    }
+
+    // Fallback to playlist-level field
+    const fallback = extractYouTubeId(p?.youtubeId);
+    if (!fallback) {
+      alert(
+        "No tracks saved yet. Add tracks (YouTube IDs) to this playlist, then come back and press Play."
+      );
+      return;
+    }
+
+    setCurrentTrackIndex(0);
+    setCurrentVideoId(fallback);
+    setIsPlaying(true);
+  }
+
+  function startPlayback() {
+    // If already playing a valid id, keep it. Otherwise play the first track.
+    const currentOk = extractYouTubeId(currentVideoId);
+    if (currentOk) {
+      setIsPlaying(true);
+      return;
+    }
+    playAt(0);
+  }
+
+  function pausePlayback() {
+    setIsPlaying(false);
+  }
+
+  function nextTrack() {
+    if (!tracks.length) return;
+    const next = Math.min(tracks.length - 1, currentTrackIndex + 1);
+    playAt(next);
+  }
+
+  function prevTrack() {
+    if (!tracks.length) return;
+    const prev = Math.max(0, currentTrackIndex - 1);
+    playAt(prev);
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-5 pt-10 pb-28">
@@ -375,8 +521,21 @@ export default function PlaylistPage() {
 
             {/* Actions */}
             <div className="mt-6 flex flex-wrap items-center gap-2">
-              <button className="inBtn" type="button">
-                ▶ Play (demo)
+              <button className="inBtn" type="button" onClick={startPlayback}>
+                ▶ {tracks.length ? "Play" : extractYouTubeId(currentVideoId || p?.youtubeId) ? "Play" : "Play (add tracks)"}
+              </button>
+
+              <button
+                type="button"
+                onClick={pausePlayback}
+                className="px-4 py-2 rounded-full border text-sm"
+                style={{
+                  borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
+                  background: "color-mix(in srgb, var(--midnight) 85%, transparent)",
+                  color: "var(--fog)",
+                }}
+              >
+                ❚❚ Pause
               </button>
 
               {/* Like (REAL) */}
@@ -437,8 +596,21 @@ export default function PlaylistPage() {
               >
                 + Save (stub)
               </button>
+              {isOwner ? (
+                <Link
+                  href={`/p/${p.id}/edit`}
+                  className="px-4 py-2 rounded-full border text-sm"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
+                    background: "color-mix(in srgb, var(--midnight) 85%, transparent)",
+                    color: "var(--fog)",
+                  }}
+                >
+                  ✎ Edit
+                </Link>
+              ) : null}
 
-              {(p.userId ?? p.user_id) === user?.id ? (
+              {isOwner ? (
                 <button
                   type="button"
                   onClick={deletePlaylist}
@@ -486,39 +658,55 @@ export default function PlaylistPage() {
               ))}
             </div>
 
-            {/* Tracks stub */}
+            {/* Tracks (real) */}
             <div className="mt-7">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Tracks</h2>
-                <span className="text-sm text-white/50">Coming next</span>
+                <span className="text-sm text-white/50">
+                  {tracks.length ? `${tracks.length} track${tracks.length === 1 ? "" : "s"}` : "No tracks yet"}
+                </span>
               </div>
 
               <div
                 className="mt-3 border rounded-xl overflow-hidden"
                 style={{ borderColor: "color-mix(in srgb, var(--line) 75%, transparent)" }}
               >
-                {["Intro (stub)", "Main vibe (stub)", "Closer (stub)"].map((name, idx) => (
-                  <div
-                    key={name}
-                    className="flex items-center justify-between px-4 py-3"
-                    style={{
-                      background: idx % 2 ? "color-mix(in srgb, var(--midnight) 92%, transparent)" : "transparent",
-                      borderTop:
-                        idx === 0 ? "none" : "1px solid color-mix(in srgb, var(--line) 70%, transparent)",
-                    }}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="text-white/40 w-6 text-right">{idx + 1}</span>
-                      <div className="min-w-0">
-                        <div className="truncate">{name}</div>
-                        <div className="text-xs" style={{ color: "var(--muted)" }}>
-                          Artist name • 2:34
+                {tracks.length ? (
+                  tracks.map((t, idx) => {
+                    const isCurrent = isPlaying && idx === currentTrackIndex;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => playAt(idx)}
+                        className="w-full text-left flex items-center justify-between px-4 py-3"
+                        style={{
+                          background: isCurrent
+                            ? "color-mix(in srgb, var(--gold) 10%, transparent)"
+                            : idx % 2
+                            ? "color-mix(in srgb, var(--midnight) 92%, transparent)"
+                            : "transparent",
+                          borderTop: idx === 0 ? "none" : "1px solid color-mix(in srgb, var(--line) 70%, transparent)",
+                        }}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="text-white/40 w-6 text-right">{idx + 1}</span>
+                          <div className="min-w-0">
+                            <div className="truncate">{t.title}</div>
+                            <div className="text-xs" style={{ color: "var(--muted)" }}>
+                              {t.artist || "Unknown artist"}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                    <span className="text-white/50 text-sm">⋯</span>
+                        <span className="text-white/70 text-sm">{isCurrent ? "❚❚" : "▶"}</span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-4 py-4 text-sm" style={{ color: "var(--muted)" }}>
+                    Add tracks to this playlist (YouTube video IDs) and they’ll show up here.
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>
@@ -669,7 +857,7 @@ export default function PlaylistPage() {
             <div className="min-w-0">
               <div className="text-sm font-semibold truncate">{p.title}</div>
               <div className="text-xs" style={{ color: "var(--muted)" }}>
-                Playing: Track 1 (stub) • {handle}
+                Playing: {tracks.length ? (tracks[currentTrackIndex]?.title || "Track") : "Track"} • {handle}
               </div>
             </div>
           </div>
@@ -677,25 +865,44 @@ export default function PlaylistPage() {
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
               type="button"
+              onClick={prevTrack}
+              className="px-4 py-2 rounded-full border text-sm"
+              style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+              aria-label="Previous"
+              title="Previous"
+            >
+              ⏮
+            </button>
+            <button
+              type="button"
+              onClick={startPlayback}
               className="px-4 py-2 rounded-full border text-sm"
               style={{
                 borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
                 background: "color-mix(in srgb, var(--gold) 18%, transparent)",
               }}
+              aria-label="Play"
+              title="Play"
             >
               ▶
             </button>
             <button
               type="button"
+              onClick={pausePlayback}
               className="px-4 py-2 rounded-full border text-sm"
               style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+              aria-label="Pause"
+              title="Pause"
             >
               ❚❚
             </button>
             <button
               type="button"
+              onClick={nextTrack}
               className="px-4 py-2 rounded-full border text-sm"
               style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+              aria-label="Next"
+              title="Next"
             >
               ⏭
             </button>
@@ -726,7 +933,18 @@ export default function PlaylistPage() {
               ↗
             </a>
 
-            {(p.userId ?? p.user_id) === user?.id ? (
+            {isOwner ? (
+              <Link
+                href={`/p/${p.id}/edit`}
+                className="px-3 py-2 rounded-full border text-sm"
+                style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                aria-label="Edit playlist"
+                title="Edit playlist"
+              >
+                ✎
+              </Link>
+            ) : null}
+            {isOwner ? (
               <button
                 type="button"
                 onClick={deletePlaylist}
@@ -745,6 +963,35 @@ export default function PlaylistPage() {
             ) : null}
           </div>
         </div>
+
+        {/* YouTube embed (Option B MVP)
+            This will keep playing while you stay on this page.
+            Next step for true app-wide playback: move this player into src/app/layout.js. */}
+        {extractYouTubeId(currentVideoId) ? (
+          <div className="max-w-6xl mx-auto px-5 pb-3">
+            <div
+              className="mt-2 rounded-xl overflow-hidden border"
+              style={{ borderColor: "color-mix(in srgb, var(--line) 70%, transparent)" }}
+            >
+              {isPlaying ? (
+                <iframe
+                  key={`${currentVideoId}-playing`}
+                  width="100%"
+                  height="120"
+                  src={`https://www.youtube-nocookie.com/embed/${currentVideoId}?autoplay=1&mute=0&controls=1&rel=0&playsinline=1`}
+                  title="YouTube player"
+                  frameBorder="0"
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <div className="px-4 py-3 text-sm" style={{ color: "var(--muted)" }}>
+                  Ready. Press ▶ to play.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
 
         {/* Progress (stub) */}
         <div className="max-w-6xl mx-auto px-5 pb-3">

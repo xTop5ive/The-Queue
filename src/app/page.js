@@ -277,7 +277,7 @@ export default async function HomePage() {
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
                 href="/explore"
-                className="px-5 py-2.5 rounded-full font-semibold border transition"
+                className="px-5 py-2.5 rounded-full font-semibold border transition hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-white/20"
                 style={{
                   background: "linear-gradient(90deg, rgba(99,102,241,0.95), rgba(147,51,234,0.95))",
                   borderColor: "transparent",
@@ -289,7 +289,7 @@ export default async function HomePage() {
 
               <Link
                 href="/new"
-                className="px-5 py-2.5 rounded-full font-semibold border transition"
+                className="px-5 py-2.5 rounded-full font-semibold border transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/20"
                 style={{
                   background: "transparent",
                   borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
@@ -310,7 +310,7 @@ export default async function HomePage() {
           </div>
 
           <div className="hidden md:block">
-            <div className="relative w-44 h-44 rounded-3xl border border-white/10 bg-white/5 grid place-items-center">
+            <div className="relative w-44 h-44 rounded-3xl border border-white/10 bg-white/5 grid place-items-center overflow-hidden">
               <div
                 className="absolute inset-0 pointer-events-none"
                 style={{
@@ -318,22 +318,11 @@ export default async function HomePage() {
                     "radial-gradient(220px 220px at 30% 30%, rgba(246, 193, 109, 0.20) 0%, rgba(0,0,0,0) 60%)",
                 }}
               />
-              <div className="hidden md:block">
-                <div className="relative w-44 h-44 rounded-3xl border border-white/10 bg-white/5 grid place-items-center overflow-hidden">
-                  <div
-                    className="absolute inset-0 pointer-events-none"
-                    style={{
-                      background:
-                        "radial-gradient(220px 220px at 30% 30%, rgba(246, 193, 109, 0.20) 0%, rgba(0,0,0,0) 60%)",
-                    }}
-                  />
-                  <img
-                    src="/brand-logo.png"
-                    alt="The Queue logo"
-                    className="relative w-28 h-28 object-contain"
-                  />
-                </div>
-              </div>
+              <img
+                src="/Stylized%20%27Q%27%20Monogram%20with%20Play%20Button.png"
+                alt="The Queue logo"
+                className="relative w-28 h-28 object-contain"
+              />
             </div>
           </div>
         </div>
