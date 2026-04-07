@@ -20,6 +20,7 @@ const Navbar = () => {
   const [searchValue, setSearchValue] = useState("");
   const [ProfileMenu, setProfileMenu] = useState(false);
   const [searchedPlaylists, setSearchedPlaylists] = useState([]);
+  const [searchedUsers, setSearchedUsers] = useState([]);
   const [searchPanel, setSearchPanel] = useState(false);
 
   const pathname = usePathname();
@@ -59,7 +60,7 @@ const Navbar = () => {
       return base.toLowerCase();
     };
 
-    const applyUser = (user) => {
+    const applyUser = async (user) => {
       if (!user) {
         setIsAuthed(false);
         setCurrentUser({
@@ -74,13 +75,24 @@ const Navbar = () => {
       const handle = toHandle(email);
       const meta = user.user_metadata || {};
       const displayName = (meta.full_name || meta.name || handle || "User").toString();
-      const avatar = (meta.avatar_url || meta.picture || "/assets/image/avatar_default.jpg").toString();
+      const metaAvatar = (meta.avatar_url || meta.picture || "").toString();
+
+      // Prefer avatar_url from profiles table (set via settings upload)
+      let profileAvatar = "";
+      try {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("avatar_url, handle, display_name")
+          .eq("id", user.id)
+          .maybeSingle();
+        profileAvatar = prof?.avatar_url || "";
+      } catch {}
 
       setIsAuthed(true);
       setCurrentUser({
         name: displayName,
         handle,
-        profilePic: avatar,
+        profilePic: profileAvatar || metaAvatar || "/assets/image/avatar_default.jpg",
       });
     };
 
@@ -104,58 +116,64 @@ const Navbar = () => {
   }, []);
 
   const searchPlaylists = async (value) => {
-    const v = (value || "").trim().toLowerCase();
-  
-    if (!v) {
+    const v = (value || "").trim().toLowerCase().replace(/^@/, "");
+
+    if (v.length < 2) {
       setSearchedPlaylists([]);
+      setSearchedUsers([]);
       return;
     }
-  
+
     try {
       const supabase = supabaseRef.current;
       if (!supabase) {
         setSearchedPlaylists([]);
+        setSearchedUsers([]);
         return;
       }
-  
-      // Search title + description (simple + reliable)
-      const { data, error } = await supabase
-        .from("playlists")
-        .select("id,title,description,cover_url,likes_count,user_id,owner_handle,tags")
-        .eq("is_public", true)
-        .or(`title.ilike.%${v}%,description.ilike.%${v}%`)
-        .limit(8);
-  
-      if (error) throw error;
-  
-      // Map DB rows to what your UI expects
-      const results = (data || []).map((row) => ({
-        id: row.id,
-        title: row.title,
-        description: row.description,
-        coverUrl: row.cover_url,
-        likes: row.likes_count ?? 0,
-        tags: row.tags || [],
-        handle: row.owner_handle || "user",
-        userId: row.user_id,
-      }));
-  
-      setSearchedPlaylists(results);
+
+      // Run user + playlist searches in parallel
+      const [userRes, playlistRes] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id, handle, display_name, avatar_url, role")
+          .or(`handle.ilike.%${v}%,display_name.ilike.%${v}%`)
+          .limit(3),
+        supabase
+          .from("playlists")
+          .select("id,title,description,cover_url,likes_count,user_id,owner_handle,tags")
+          .eq("is_public", true)
+          .or(`title.ilike.%${v}%,description.ilike.%${v}%,owner_handle.ilike.%${v}%`)
+          .limit(5),
+      ]);
+
+      setSearchedUsers(
+        (userRes.data || []).map((u) => ({
+          id: u.id,
+          handle: (u.handle || "").replace(/^@/, ""),
+          displayName: u.display_name || u.handle || "",
+          avatarUrl: u.avatar_url || "",
+          role: u.role || "",
+        }))
+      );
+
+      setSearchedPlaylists(
+        (playlistRes.data || []).map((row) => ({
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          coverUrl: row.cover_url,
+          likes: row.likes_count ?? 0,
+          tags: row.tags || [],
+          handle: (row.owner_handle || "user").toString().replace(/^@/, ""),
+          userId: row.user_id,
+        }))
+      );
     } catch (err) {
       console.log("Search error:", err);
       setSearchedPlaylists([]);
+      setSearchedUsers([]);
     }
-  
-
-    const results = DEMO_PLAYLISTS
-      .filter((p) => p.isPublic)
-      .filter((p) => {
-        const hay = `${p.title} ${p.description ?? ""} ${p.handle} ${(p.tags || []).join(" ")}`.toLowerCase();
-        return hay.includes(v);
-      })
-      .slice(0, 8);
-
-    setSearchedPlaylists(results);
   };
 
   useEffect(() => {
@@ -218,6 +236,7 @@ const Navbar = () => {
                   setSearchValue("");
                   setIsFocused(false);
                   setSearchedPlaylists([]);
+                  setSearchedUsers([]);
                 }}
               />
             </div>
@@ -233,34 +252,79 @@ const Navbar = () => {
             }}
           >
             {isFocused && (
-              searchedPlaylists.length ? (
-                searchedPlaylists.map((p) => (
-                  <div
-                    key={p.id}
-                    className="searchResultItem"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      setIsFocused(false);
-                      setSearchValue("");
-                      setSearchedPlaylists([]);
-                      router.push(`/p/${p.id}`);
-                    }}
-                  >
-                    <div className="userImage">
-                      <img src={p.coverUrl || "/assets/image/avatar_default.jpg"} alt="" />
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column" }}>
-                      <h3 style={{ margin: 0 }}>{p.title}</h3>
-                      <span style={{ fontSize: 12, opacity: 0.9, color: "#111" }}>
-                          by {p.handle?.startsWith("@") ? p.handle : `@${p.handle}`}
-                      </span>
-                    </div>
-                  </div>
-                ))
+              searchedUsers.length || searchedPlaylists.length ? (
+                <>
+                  {searchedUsers.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#888", padding: "6px 12px 2px", textTransform: "uppercase" }}>People</div>
+                      {searchedUsers.map((u) => (
+                        <div
+                          key={u.id}
+                          className="searchResultItem"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setIsFocused(false);
+                            setSearchValue("");
+                            setSearchedPlaylists([]);
+                            setSearchedUsers([]);
+                            router.push(`/u/${u.handle}`);
+                          }}
+                        >
+                          <div className="userImage">
+                            <img
+                              src={u.avatarUrl || "/assets/image/avatar_default.jpg"}
+                              alt=""
+                              onError={(e) => { e.currentTarget.src = "/assets/image/avatar_default.jpg"; }}
+                            />
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column" }}>
+                            <h3 style={{ margin: 0 }}>{u.displayName || `@${u.handle}`}</h3>
+                            <span style={{ fontSize: 12, opacity: 0.7, color: "#111" }}>
+                              @{u.handle}{u.role ? ` • ${u.role}` : ""}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {searchedPlaylists.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#888", padding: "6px 12px 2px", textTransform: "uppercase" }}>Playlists</div>
+                      {searchedPlaylists.map((p) => (
+                        <div
+                          key={p.id}
+                          className="searchResultItem"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setIsFocused(false);
+                            setSearchValue("");
+                            setSearchedPlaylists([]);
+                            setSearchedUsers([]);
+                            router.push(`/p/${p.id}`);
+                          }}
+                        >
+                          <div className="userImage">
+                            <img
+                              src={p.coverUrl || "/assets/image/avatar_default.jpg"}
+                              alt=""
+                              onError={(e) => { e.currentTarget.src = "/assets/image/avatar_default.jpg"; }}
+                            />
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column" }}>
+                            <h3 style={{ margin: 0 }}>{p.title}</h3>
+                            <span style={{ fontSize: 12, opacity: 0.9, color: "#111" }}>
+                              by @{p.handle}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </>
               ) : (
                 <div className="noUserFound">
                   <FaFaceFrown />
-                  <h3>No playlists found</h3>
+                  <h3>No results found</h3>
                 </div>
               )
             )}
@@ -326,22 +390,59 @@ const Navbar = () => {
                   </Link>
                   <div className="linksWrapper">
                     <Link
-                      href={`/u/${currentUser.handle}?tab=settings`}
+                      href="/playlists"
                       className="link"
                       onClick={() => setProfileMenu(false)}
                     >
                       <div className="leftSide">
-                        <span className="icon">
-                          <FaUserCircle />
-                        </span>
-                        <span className="name" style={{ color: "#111" }}>Profile</span>
+                        <span className="icon">🎵</span>
+                        <span className="name" style={{ color: "#111" }}>My Playlists</span>
                       </div>
                       <span className="actionIcon">
                         <FaAngleRight />
                       </span>
                     </Link>
                     <Link
-                      href={`/explore?help=1`}
+                      href="/feed"
+                      className="link"
+                      onClick={() => setProfileMenu(false)}
+                    >
+                      <div className="leftSide">
+                        <span className="icon">📡</span>
+                        <span className="name" style={{ color: "#111" }}>Feed</span>
+                      </div>
+                      <span className="actionIcon">
+                        <FaAngleRight />
+                      </span>
+                    </Link>
+                    <Link
+                      href="/liked"
+                      className="link"
+                      onClick={() => setProfileMenu(false)}
+                    >
+                      <div className="leftSide">
+                        <span className="icon">♥</span>
+                        <span className="name" style={{ color: "#111" }}>Liked</span>
+                      </div>
+                      <span className="actionIcon">
+                        <FaAngleRight />
+                      </span>
+                    </Link>
+                    <Link
+                      href="/settings"
+                      className="link"
+                      onClick={() => setProfileMenu(false)}
+                    >
+                      <div className="leftSide">
+                        <span className="icon">⚙️</span>
+                        <span className="name" style={{ color: "#111" }}>Settings</span>
+                      </div>
+                      <span className="actionIcon">
+                        <FaAngleRight />
+                      </span>
+                    </Link>
+                    <Link
+                      href={`/explore`}
                       className="link"
                       onClick={() => setProfileMenu(false)}
                     >
@@ -364,7 +465,6 @@ const Navbar = () => {
                         try {
                           await supabaseRef.current?.auth?.signOut?.();
                         } catch {}
-                        // after sign out, return to home
                         window.location.href = "/";
                       }}
                     >
@@ -447,6 +547,7 @@ const Navbar = () => {
               onClick={() => {
                 setSearchValue("");
                 setSearchedPlaylists([]);
+                setSearchedUsers([]);
               }}
             />
           )}
@@ -466,7 +567,13 @@ const Navbar = () => {
                 }}
               >
                 <div className="profileImage">
-                  <img src={p.coverUrl || "/assets/image/avatar_default.jpg"} alt="" />
+                  <img
+                    src={p.coverUrl || "/assets/image/avatar_default.jpg"}
+                    alt=""
+                    onError={(e) => {
+                      e.currentTarget.src = "/assets/image/avatar_default.jpg";
+                    }}
+                  />
                 </div>
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   <h3 style={{ margin: 0 }}>{p.title}</h3>

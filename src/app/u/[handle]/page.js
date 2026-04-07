@@ -37,6 +37,14 @@ function normalizePlaylist(row) {
   };
 }
 
+function titleCase(value) {
+  return String(value || "")
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export default function ProfilePage() {
   const params = useParams();
   const router = useRouter();
@@ -54,6 +62,14 @@ export default function ProfilePage() {
   const [playlists, setPlaylists] = useState([]);
 
   const [error, setError] = useState("");
+
+  const [activeTab, setActiveTab] = useState("overview");
+
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followsYou, setFollowsYou] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -76,8 +92,8 @@ export default function ProfilePage() {
           const handleNoAt = handle.replace(/^@/, "");
           const { data: prof, error: profErr } = await supabase
             .from("profiles")
-            .select("id, handle, username, avatar_url")
-            .or(`handle.eq.${handle},handle.eq.@${handleNoAt},username.eq.${handleNoAt}`)
+            .select("id, handle, username, display_name, avatar_url, bio, music_dna, role, favorite_artists, favorite_albums, favorite_producers, favorite_djs, communities, top_songs")
+            .or(`handle.eq.${handleNoAt},username.eq.${handleNoAt}`)
             .maybeSingle();
 
           if (!profErr && prof?.id) {
@@ -116,7 +132,31 @@ export default function ProfilePage() {
 
         if (alive) setProfile(foundProfile);
 
-        // 4) get playlists for that user_id
+        // 4) fetch followers/following counts + viewer follow status
+        try {
+          const [{ count: fwers }, { count: fwing }] = await Promise.all([
+            supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", foundProfile.id),
+            supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", foundProfile.id),
+          ]);
+          if (alive) {
+            setFollowersCount(fwers ?? 0);
+            setFollowingCount(fwing ?? 0);
+          }
+          if (u && u.id !== foundProfile.id) {
+            const [{ data: fRow }, { data: fYouRow }] = await Promise.all([
+              supabase.from("follows").select("follower_id").eq("follower_id", u.id).eq("following_id", foundProfile.id).maybeSingle(),
+              supabase.from("follows").select("follower_id").eq("follower_id", foundProfile.id).eq("following_id", u.id).maybeSingle(),
+            ]);
+            if (alive) {
+              setIsFollowing(!!fRow);
+              setFollowsYou(!!fYouRow);
+            }
+          }
+        } catch {
+          // follows table may not exist yet
+        }
+
+        // 5) get playlists for that user_id
         const { data: rows, error: plErr } = await supabase
           .from("playlists")
           .select("id, user_id, title, description, tags, is_public, cover_url, created_at, likes_count")
@@ -146,6 +186,86 @@ export default function ProfilePage() {
 
   const displayHandle = fmtHandle(profile?.handle || handle);
 
+  const isOwner = !!(viewer?.id && profile?.id && viewer.id === profile.id);
+
+  const handleFollow = async () => {
+    if (!viewer) { router.push(`/login?next=${encodeURIComponent(`/u/${handle}`)}`); return; }
+    if (followLoading) return;
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        await supabase.from("follows").delete().eq("follower_id", viewer.id).eq("following_id", profile.id);
+        setIsFollowing(false);
+        setFollowersCount((c) => Math.max(0, c - 1));
+      } else {
+        await supabase.from("follows").insert({ follower_id: viewer.id, following_id: profile.id });
+        setIsFollowing(true);
+        setFollowersCount((c) => c + 1);
+      }
+    } catch (e) {
+      console.error("Follow error:", e);
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const insights = useMemo(() => {
+    const tagCounts = new Map();
+    let totalLikes = 0;
+
+    for (const playlist of playlists) {
+      totalLikes += Number(playlist?.likes || 0);
+      for (const tag of playlist?.tags || []) {
+        const key = String(tag || "").trim().toLowerCase();
+        if (!key) continue;
+        tagCounts.set(key, (tagCounts.get(key) || 0) + 1);
+      }
+    }
+
+    const topTags = [...tagCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([tag]) => tag)
+      .slice(0, 8);
+
+    // Prefer saved profile communities; fall back to top playlist tags
+    const profileCommunities = Array.isArray(profile?.communities) ? profile.communities : [];
+    const communities = (profileCommunities.length ? profileCommunities : topTags.slice(0, 5)).map((tag) => ({
+      slug: String(tag).toLowerCase(),
+      label: titleCase(tag),
+    }));
+
+    const featuredPlaylists = [...playlists]
+      .sort((a, b) => Number(b?.likes || 0) - Number(a?.likes || 0))
+      .slice(0, 3);
+
+    const musicDNA = topTags.length
+      ? `${topTags.slice(0, 3).map(titleCase).join(" • ")} vibes`
+      : "Still building this music identity.";
+
+    return {
+      totalLikes,
+      topTags,
+      communities,
+      featuredPlaylists,
+      musicDNA,
+      favoriteArtists: Array.isArray(profile?.favorite_artists)
+        ? profile.favorite_artists.slice(0, 8)
+        : [],
+      favoriteAlbums: Array.isArray(profile?.favorite_albums)
+        ? profile.favorite_albums.slice(0, 8)
+        : [],
+      favoriteProducers: Array.isArray(profile?.favorite_producers)
+        ? profile.favorite_producers.slice(0, 8)
+        : [],
+      favoriteDjs: Array.isArray(profile?.favorite_djs)
+        ? profile.favorite_djs.slice(0, 8)
+        : [],
+      topSongs: Array.isArray(profile?.top_songs)
+        ? profile.top_songs.slice(0, 5)
+        : [],
+    };
+  }, [playlists, profile]);
+
   return (
     <div className="max-w-6xl mx-auto px-5 py-10">
       {/* Top */}
@@ -169,21 +289,121 @@ export default function ProfilePage() {
       <div className="mt-8 card p-6">
         <div className="flex items-center gap-4">
           <div
-            className="w-14 h-14 rounded-full border flex-shrink-0"
+            className="w-14 h-14 rounded-full border flex-shrink-0 overflow-hidden"
             style={{
               borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
               background: "color-mix(in srgb, var(--midnight) 85%, transparent)",
             }}
-          />
-          <div className="min-w-0">
-            <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
-              Creator
+          >
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt={displayHandle}
+                className="w-full h-full object-cover"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            ) : null}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                Creator Profile
+              </div>
+              {profile?.role ? (
+                <span
+                  className="text-xs px-2.5 py-0.5 rounded-full border"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--gold) 60%, transparent)",
+                    color: "color-mix(in srgb, var(--gold) 90%, white)",
+                    background: "color-mix(in srgb, var(--gold) 10%, transparent)",
+                  }}
+                >
+                  {profile.role}
+                </span>
+              ) : null}
             </div>
-            <div className="text-2xl font-semibold truncate">{displayHandle}</div>
-            <div className="text-white/60 text-sm mt-1">
-              {playlists.length} playlist{playlists.length === 1 ? "" : "s"}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="text-2xl font-semibold truncate">{displayHandle}</div>
+              {followsYou && !isOwner && (
+                <span
+                  className="text-xs px-2.5 py-0.5 rounded-full border flex-shrink-0"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--line) 60%, transparent)",
+                    color: "var(--muted)",
+                  }}
+                >
+                  Follows you
+                </span>
+              )}
+            </div>
+            <div className="text-white/80 text-sm mt-1 truncate">
+              {profile?.display_name || (profile?.username ? titleCase(profile.username) : "Music curator")}
+            </div>
+            {profile?.bio ? (
+              <div className="text-white/60 text-sm mt-2 line-clamp-2">{profile.bio}</div>
+            ) : null}
+            <div className="text-white/60 text-sm mt-2">
+              {playlists.length} playlist{playlists.length === 1 ? "" : "s"} • {insights.totalLikes} total likes • {followersCount} follower{followersCount === 1 ? "" : "s"} • {followingCount} following
+            </div>
+            <div className="text-white/70 text-sm mt-3">
+              {profile?.music_dna || insights.musicDNA}
             </div>
           </div>
+        </div>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            {[
+              { key: "overview", label: "Overview" },
+              { key: "playlists", label: "Playlists" },
+            ].map((tab) => {
+              const active = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className="px-3 py-1.5 rounded-full border text-sm"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
+                    background: active ? "color-mix(in srgb, var(--gold) 16%, transparent)" : "transparent",
+                    color: "white",
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {isOwner ? (
+            <Link
+              href="/settings"
+              className="px-4 py-2 rounded-full border text-sm"
+              style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+            >
+              Edit profile
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={handleFollow}
+              disabled={followLoading}
+              className="px-4 py-2 rounded-full border text-sm transition"
+              style={{
+                borderColor: isFollowing
+                  ? "color-mix(in srgb, var(--line) 80%, transparent)"
+                  : "color-mix(in srgb, var(--gold) 60%, transparent)",
+                background: isFollowing
+                  ? "transparent"
+                  : "color-mix(in srgb, var(--gold) 14%, transparent)",
+                color: isFollowing ? "rgba(255,255,255,0.6)" : "color-mix(in srgb, var(--gold) 90%, white)",
+                opacity: followLoading ? 0.6 : 1,
+              }}
+            >
+              {followLoading ? "…" : isFollowing ? "Following" : "Follow"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -191,9 +411,309 @@ export default function ProfilePage() {
         <div className="card p-6 mt-6 text-white/70">Loading profile…</div>
       ) : error ? (
         <div className="card p-6 mt-6 text-red-300">{error}</div>
+      ) : activeTab === "overview" ? (
+        <>
+          <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="card p-5">
+              <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                Music DNA
+              </div>
+              <div className="mt-3 text-lg font-semibold">{insights.musicDNA}</div>
+              <p className="mt-3 text-sm text-white/60">
+                This section summarizes the taste profile based on public playlists, tags, and curation style.
+              </p>
+            </div>
+
+            <div className="card p-5">
+              <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                Favorite Genres
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {insights.topTags.length ? (
+                  insights.topTags.slice(0, 6).map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-3 py-1.5 rounded-full border text-sm"
+                      style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                    >
+                      {titleCase(tag)}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-white/50 text-sm">No genre signals yet.</span>
+                )}
+              </div>
+            </div>
+
+            <div className="card p-5">
+              <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                Favorite Artists
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {insights.favoriteArtists.length ? (
+                  insights.favoriteArtists.map((artist) => (
+                    <span
+                      key={artist}
+                      className="px-3 py-1.5 rounded-full border text-sm"
+                      style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                    >
+                      {artist}
+                    </span>
+                  ))
+                ) : (
+                  <>
+                    <span className="text-white/50 text-sm">No favorite artists added yet.</span>
+                    {isOwner ? (
+                      <Link
+                        href="/settings"
+                        className="text-sm underline text-white/70 hover:text-white w-full mt-2"
+                      >
+                        Add favorite artists
+                      </Link>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="card p-5">
+              <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                Communities
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {insights.communities.length ? (
+                  insights.communities.map((community) => (
+                    <button
+                      key={community.slug}
+                      type="button"
+                      className="px-3 py-1.5 rounded-full border text-sm"
+                      style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                    >
+                      {community.label}
+                    </button>
+                  ))
+                ) : (
+                  <span className="text-white/50 text-sm">Communities coming soon.</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-2">
+            <div className="card p-5">
+              <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                Top Songs Right Now
+              </div>
+              <div className="mt-4 grid gap-2">
+                {insights.topSongs.length ? (
+                  insights.topSongs.map((song, idx) => {
+                    const songTitle = typeof song === "string" ? song : song?.title || `Song ${idx + 1}`;
+                    const songArtist = typeof song === "string" ? "" : song?.artist || "";
+                    return (
+                      <div
+                        key={`${songTitle}-${idx}`}
+                        className="rounded-2xl border px-3 py-2"
+                        style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                      >
+                        <div className="text-sm font-semibold truncate">{songTitle}</div>
+                        {songArtist ? (
+                          <div className="text-xs text-white/60 truncate mt-1">{songArtist}</div>
+                        ) : null}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <>
+                    <span className="text-white/50 text-sm">No top songs added yet.</span>
+                    {isOwner ? (
+                      <Link
+                        href="/settings"
+                        className="text-sm underline text-white/70 hover:text-white mt-2"
+                      >
+                        Add top songs
+                      </Link>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="card p-5">
+              <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                Favorite Albums
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {insights.favoriteAlbums.length ? (
+                  insights.favoriteAlbums.map((album) => (
+                    <span
+                      key={album}
+                      className="px-3 py-1.5 rounded-full border text-sm"
+                      style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                    >
+                      {album}
+                    </span>
+                  ))
+                ) : (
+                  <>
+                    <span className="text-white/50 text-sm">No favorite albums added yet.</span>
+                    {isOwner ? (
+                      <Link
+                        href="/settings"
+                        className="text-sm underline text-white/70 hover:text-white w-full mt-2"
+                      >
+                        Add favorite albums
+                      </Link>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="card p-5">
+              <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                Favorite Producers
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {insights.favoriteProducers.length ? (
+                  insights.favoriteProducers.map((producer) => (
+                    <span
+                      key={producer}
+                      className="px-3 py-1.5 rounded-full border text-sm"
+                      style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                    >
+                      {producer}
+                    </span>
+                  ))
+                ) : (
+                  <>
+                    <span className="text-white/50 text-sm">No favorite producers added yet.</span>
+                    {isOwner ? (
+                      <Link
+                        href="/settings"
+                        className="text-sm underline text-white/70 hover:text-white w-full mt-2"
+                      >
+                        Add favorite producers
+                      </Link>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="card p-5">
+              <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                Favorite DJs
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {insights.favoriteDjs.length ? (
+                  insights.favoriteDjs.map((dj) => (
+                    <span
+                      key={dj}
+                      className="px-3 py-1.5 rounded-full border text-sm"
+                      style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                    >
+                      {dj}
+                    </span>
+                  ))
+                ) : (
+                  <>
+                    <span className="text-white/50 text-sm">No favorite DJs added yet.</span>
+                    {isOwner ? (
+                      <Link
+                        href="/settings"
+                        className="text-sm underline text-white/70 hover:text-white w-full mt-2"
+                      >
+                        Add favorite DJs
+                      </Link>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
+            <div className="card p-5">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                    Featured Playlists
+                  </div>
+                  <h2 className="text-2xl font-semibold mt-2">Top picks from this profile</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("playlists")}
+                  className="text-sm underline text-white/70 hover:text-white"
+                >
+                  View all playlists
+                </button>
+              </div>
+
+              {insights.featuredPlaylists.length ? (
+                <div className="mt-5 grid gap-3">
+                  {insights.featuredPlaylists.map((p) => (
+                    <Link
+                      key={p.id}
+                      href={`/p/${p.id}`}
+                      className="rounded-2xl border p-3 flex items-center gap-3 hover:bg-white/5 transition"
+                      style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                    >
+                      <img
+                        src={p.coverUrl || "/placeholder-cover.png"}
+                        alt=""
+                        className="w-16 h-16 rounded-xl object-cover"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold truncate">{p.title}</div>
+                        <div className="text-sm text-white/60 truncate">
+                          {p.description || "No description yet."}
+                        </div>
+                      </div>
+                      <div className="text-sm text-white/60">♥ {p.likes}</div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-5 text-white/50 text-sm">No featured playlists yet.</div>
+              )}
+            </div>
+
+            <div className="card p-5">
+              <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                Profile Stats
+              </div>
+              <div className="mt-4 grid gap-3">
+                <div className="rounded-2xl border p-4" style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}>
+                  <div className="text-white/60 text-sm">Public playlists</div>
+                  <div className="text-2xl font-semibold mt-1">{playlists.length}</div>
+                </div>
+                <div className="rounded-2xl border p-4" style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}>
+                  <div className="text-white/60 text-sm">Total likes</div>
+                  <div className="text-2xl font-semibold mt-1">{insights.totalLikes}</div>
+                </div>
+                <div className="rounded-2xl border p-4" style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}>
+                  <div className="text-white/60 text-sm">Followers</div>
+                  <div className="text-2xl font-semibold mt-1">{followersCount}</div>
+                </div>
+                <div className="rounded-2xl border p-4" style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}>
+                  <div className="text-white/60 text-sm">Following</div>
+                  <div className="text-2xl font-semibold mt-1">{followingCount}</div>
+                </div>
+                <div className="rounded-2xl border p-4" style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}>
+                  <div className="text-white/60 text-sm">Strongest vibe</div>
+                  <div className="text-lg font-semibold mt-1">
+                    {insights.topTags[0] ? titleCase(insights.topTags[0]) : "Still loading taste"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       ) : (
         <>
-          {/* Playlists grid */}
           <div className="mt-8 flex items-end justify-between">
             <div>
               <h2 className="text-2xl font-semibold">Playlists</h2>

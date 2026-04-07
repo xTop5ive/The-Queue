@@ -4,6 +4,7 @@ import { createServerClient } from "@/lib/supabase-server";
 export const dynamic = "force-dynamic";
 
 function mapPlaylist(row, handleByUserId) {
+  const raw = (row.owner_handle || handleByUserId?.[row.user_id] || "").replace(/^@/, "");
   return {
     id: row.id,
     title: row.title,
@@ -12,7 +13,8 @@ function mapPlaylist(row, handleByUserId) {
     tags: row.tags || [],
     likes: row.likes_count ?? 0,
     userId: row.user_id,
-    handle: row.owner_handle || handleByUserId?.[row.user_id] || "@user",
+    handle: raw ? `@${raw}` : "@user",
+    rawHandle: raw,
     createdAt: row.created_at,
   };
 }
@@ -67,22 +69,29 @@ export default async function FeedPage() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map((p) => (
-          <Link key={p.id} href={`/p/${p.id}`} className="card p-4 hover:border-white/20 transition hover:-translate-y-0.5">
-            <div className="flex gap-3">
-              <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-white/10 bg-white/5 flex-shrink-0">
+          <div key={p.id} className="card p-4 hover:border-white/20 transition hover:-translate-y-0.5 relative">
+            <Link href={`/p/${p.id}`} className="absolute inset-0 z-0 rounded-xl" aria-label={p.title} />
+            <div className="flex gap-3 relative z-10">
+              <Link href={`/p/${p.id}`} className="relative w-16 h-16 rounded-xl overflow-hidden border border-white/10 bg-white/5 flex-shrink-0">
                 {p.coverUrl ? (
                   <img src={p.coverUrl} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
                 ) : (
                   <div className="w-full h-full grid place-items-center text-[10px] text-white/60">no cover</div>
                 )}
-              </div>
+              </Link>
 
               <div className="min-w-0 flex-1">
                 <div className="font-semibold truncate">{p.title}</div>
                 <div className="text-sm text-white/60 line-clamp-2">{p.description || "No description"}</div>
                 <div className="text-xs mt-1">
                   <span className="text-white/50">by </span>
-                  <span className="text-white/85">{p.handle}</span>
+                  {p.rawHandle ? (
+                    <Link href={`/u/${p.rawHandle}`} className="text-white/85 hover:underline relative z-10">
+                      {p.handle}
+                    </Link>
+                  ) : (
+                    <span className="text-white/85">{p.handle}</span>
+                  )}
                 </div>
               </div>
 
@@ -92,14 +101,14 @@ export default async function FeedPage() {
               </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-1.5">
+            <div className="mt-3 flex flex-wrap gap-1.5 relative z-10">
               {(p.tags || []).slice(0, 4).map((t) => (
                 <span key={`${p.id}-${t}`} className="text-xs px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-white/80">
                   {t}
                 </span>
               ))}
             </div>
-          </Link>
+          </div>
         ))}
       </div>
     </div>

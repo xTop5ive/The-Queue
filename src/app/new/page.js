@@ -57,6 +57,192 @@ function parseYouTubeId(input) {
   return "";
 }
 
+// Some YouTube titles come back with HTML entities like &#39; or &quot;
+// Decode those so users don't see the symbols in our inputs.
+function decodeHtmlEntities(input) {
+  const s = (input || "").toString();
+  if (!s) return "";
+
+  // Fast path for the common ones
+  const quick = s
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ");
+
+  // If DOM is available, let the browser decode anything else
+  try {
+    if (typeof window !== "undefined") {
+      const ta = document.createElement("textarea");
+      ta.innerHTML = quick;
+      return (ta.value || "").toString();
+    }
+  } catch {
+    // ignore
+  }
+
+  return quick;
+}
+
+// YouTube titles often look like: "Artist - Song Title"
+// This splits it so Artist and Title fields get populated cleanly.
+function splitArtistTitle(rawTitle, fallbackArtist = "") {
+  const raw = decodeHtmlEntities((rawTitle || "").toString()).trim();
+  const fb = decodeHtmlEntities((fallbackArtist || "").toString()).trim();
+  if (!raw) return { artist: fb, title: "" };
+
+  // Normalize whitespace + common dash variants
+  let s = raw.replace(/\s+/g, " ").trim();
+  s = s.replace(/[–—]/g, "-");
+
+  // Helper: remove common YouTube noise from titles
+  const stripNoise = (str) => {
+    if (!str) return "";
+    let out = String(str).replace(/\s+/g, " ").trim();
+
+    // Remove trailing segments after pipes (often: | Official Video)
+    out = out.split("|")[0].trim();
+
+    // Remove common bracket/paren tags (Official Video/Audio, Lyrics, Visualizer, etc.)
+    // We only remove these when they appear as standalone tags.
+    const noiseTag = /(official\s*(music\s*)?video|official\s*audio|lyric\s*video|lyrics?|audio|visualizer|mv|performance|live|sped\s*up|slowed(\s*\+\s*reverb)?|clean|explicit)/i;
+
+    // Remove trailing (...) or [...] blocks that match noise tags
+    out = out.replace(/\s*(\(|\[)\s*([^\)\]]+)\s*(\)|\])\s*$/g, (m, open, inner) => {
+      return noiseTag.test(inner) ? "" : m;
+    });
+
+    // Remove any remaining repeated trailing noise blocks (do a few passes)
+    for (let i = 0; i < 3; i++) {
+      const next = out.replace(/\s*(\(|\[)\s*([^\)\]]+)\s*(\)|\])\s*$/g, (m, open, inner) => {
+        return noiseTag.test(inner) ? "" : m;
+      }).trim();
+      if (next === out) break;
+      out = next;
+    }
+
+    return out.trim();
+  };
+
+  // Helper: pull `feat/ft/featuring ...` out of a title string
+  // Returns: { baseTitle, featArtists } where featArtists is a string like "DaBaby" or "DaBaby, Drake"
+  const extractFeaturing = (titleStr) => {
+    const t = String(titleStr || "").trim();
+    if (!t) return { baseTitle: "", featArtists: "" };
+
+    // Match: feat. X / ft X / featuring X (until end)
+    const m = t.match(/\s*(?:\(|\[)?\s*(feat\.?|ft\.?|featuring)\s+([^\)\]]+)\s*(?:\)|\])?\s*$/i);
+    if (m && m[2]) {
+      const featArtists = m[2].trim();
+      const baseTitle = t.slice(0, m.index).trim();
+      return { baseTitle, featArtists };
+    }
+
+    // Also handle: "Title - feat X" style is already covered by the above; this is fallback.
+    return { baseTitle: t, featArtists: "" };
+  };
+
+  // Split on the FIRST " - " if present (common: "Artist - Title")
+  // If not present, we fallback.
+  const dashIdx = s.indexOf(" - ");
+
+  let artistPart = "";
+  let titlePart = "";
+
+  if (dashIdx > 0) {
+    artistPart = s.slice(0, dashIdx).trim();
+    titlePart = s.slice(dashIdx + 3).trim();
+  } else {
+    // Sometimes titles use "-" without spaces; try a safe regex split once.
+    const m = s.match(/^(.+?)\s-\s(.+)$/);
+    if (m && m[1] && m[2]) {
+      artistPart = m[1].trim();
+      titlePart = m[2].trim();
+    } else {
+      // No clear artist/title split
+      return { artist: fb, title: stripNoise(s) };
+    }
+  }
+
+  // Clean up title noise first
+  titlePart = stripNoise(titlePart);
+
+  // If title has trailing feat/ft, move it into artist
+  const { baseTitle, featArtists } = extractFeaturing(titlePart);
+  titlePart = stripNoise(baseTitle);
+
+  // Artist cleanup:
+  // Normalize any collaboration separators to a single word: "feat"
+  // Examples:
+  // - "Artist x Artist2" -> "Artist feat Artist2"
+  // - "Artist & Artist2" -> "Artist feat Artist2"
+  // - "Artist with Artist2" -> "Artist feat Artist2"
+  // - "Artist w/ Artist2" -> "Artist feat Artist2"
+  // - "Artist ft Artist2" -> "Artist feat Artist2"
+  // - "Artist feat Artist2" (already) -> stays
+  const normalizeArtistCollabs = (str) => {
+    let out = String(str || "").replace(/\s+/g, " ").trim();
+    if (!out) return "";
+
+    // Normalize spelled/abbrev feature keywords to "feat"
+    out = out.replace(/\b(feat\.?|ft\.?|featuring)\b/gi, "feat");
+
+    // Normalize common collab separators to "feat"
+    // includes: x, ×, &, and, +, with, w/
+    out = out.replace(/\s*(?:x|×|&|\+|and|with|w\/|w)\s*/gi, " feat ");
+
+    // Cleanup duplicate feat tokens and whitespace
+    out = out.replace(/\b(feat)\b\s+\b(feat)\b/gi, "feat");
+    out = out.replace(/\s+/g, " ").trim();
+
+    // If it starts with "feat" somehow, drop it
+    out = out.replace(/^feat\s+/i, "");
+
+    return out;
+  };
+
+  artistPart = normalizeArtistCollabs(artistPart);
+
+  // If title had trailing feat/ft artists, merge them into the artist field (as "feat")
+  let mergedFeatArtists = featArtists;
+  if (mergedFeatArtists) {
+    mergedFeatArtists = normalizeArtistCollabs(mergedFeatArtists);
+  }
+
+  // If the artistPart itself contains trailing feature info like "Artist feat X" or "Artist ft X",
+  // split and merge the right side into mergedFeatArtists.
+  const mArtistFeat = artistPart.match(/^(.*?)(?:\s+feat\s+(.+))$/i);
+  if (mArtistFeat) {
+    const baseArtist = (mArtistFeat[1] || "").trim();
+    const moreFeat = (mArtistFeat[2] || "").trim();
+    artistPart = baseArtist;
+    if (moreFeat) {
+      mergedFeatArtists = mergedFeatArtists ? `${mergedFeatArtists}, ${moreFeat}` : moreFeat;
+      mergedFeatArtists = normalizeArtistCollabs(mergedFeatArtists);
+    }
+  }
+
+  // Merge featuring artists into the artist field
+  let finalArtist = artistPart || fb;
+  finalArtist = normalizeArtistCollabs(finalArtist);
+
+  if (mergedFeatArtists) {
+    // Keep it looking clean and consistent: always "feat" (not x/with/&/ft)
+    finalArtist = normalizeArtistCollabs(`${finalArtist} feat ${mergedFeatArtists}`);
+  }
+
+  const finalTitle = titlePart || stripNoise(s) || "";
+
+  return {
+    artist: finalArtist || fb,
+    title: finalTitle,
+  };
+}
+
 export default function NewPage() {
   const router = useRouter();
   const supabase = useMemo(() => createBrowserClient(), []);
@@ -114,24 +300,35 @@ export default function NewPage() {
   // Add a searched YouTube result into the Tracks list
   function addTrackFromYouTube(item) {
     if (!item) return;
-    const titleStr = String(item.title || "").trim();
-    const artistStr = String(item.channelTitle || item.artist || "").trim();
-    const vid = String(item.videoId || item.youtube_video_id || item.youtubeUrl || "").trim();
 
+    const rawTitle = decodeHtmlEntities(String(item.title || "")).trim();
+
+    // Usually uploader/channel, but good fallback
+    const fallbackArtist = decodeHtmlEntities(String(item.channelTitle || item.artist || "")).trim();
+
+    // Split "Artist - Song" into separate fields
+    const parsed = splitArtistTitle(rawTitle, fallbackArtist);
+
+    const vid = String(item.videoId || item.youtube_video_id || item.youtubeUrl || "").trim();
     if (!vid) return;
 
     setTracks((prev) => {
       const cur = Array.isArray(prev) ? [...prev] : [];
 
-      // If there is an empty row, fill the first empty row instead of always adding
+      // If there is an empty row, fill it first
       const emptyIdx = cur.findIndex(
-        (t) => !(String(t?.title || "").trim() || String(t?.artist || "").trim() || String(t?.youtubeUrl || "").trim())
+        (t) =>
+          !(
+            String(t?.title || "").trim() ||
+            String(t?.artist || "").trim() ||
+            String(t?.youtubeUrl || "").trim()
+          )
       );
 
       const nextTrack = {
-        title: titleStr || "",
-        artist: artistStr || "",
-        youtubeUrl: vid, // can be videoId or url; we parse on submit
+        title: parsed.title || rawTitle || "",
+        artist: parsed.artist || fallbackArtist || "",
+        youtubeUrl: vid, // videoId or url; we parse on submit
       };
 
       if (emptyIdx >= 0) {
@@ -166,9 +363,7 @@ export default function NewPage() {
         const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(q)}&max=8`);
         const json = await res.json().catch(() => ({}));
 
-        if (!res.ok) {
-          throw new Error(json?.error || "YouTube search failed");
-        }
+        if (!res.ok) throw new Error(json?.error || "YouTube search failed");
 
         if (!alive) return;
         setYtResults(Array.isArray(json?.items) ? json.items : []);
@@ -210,14 +405,8 @@ export default function NewPage() {
     setImporting(true);
 
     try {
-      // We fetch in pages so we can import more than the default 25.
-      // The API route should return { tracks: [...], nextPageToken?: string }.
-      // If it doesn't support paging yet, this will still work (it will just import the first page).
-
       const collected = [];
       let pageToken = null;
-
-      // Safety to prevent infinite loops
       let guard = 0;
 
       while (collected.length < MAX_TRACKS && guard < 50) {
@@ -229,10 +418,7 @@ export default function NewPage() {
           body: JSON.stringify({
             playlistUrl: url,
             pageToken,
-            // Ask the server for as many as it's willing to return per call.
-            // YouTube API maxResults for playlistItems is 50.
             maxResults: 50,
-            // Let the server know our overall cap (optional).
             maxTracks: MAX_TRACKS,
           }),
         });
@@ -243,30 +429,30 @@ export default function NewPage() {
         const raw = Array.isArray(json?.tracks) ? json.tracks : [];
 
         const normalized = raw
-          .map((t) => ({
-            title: String(t?.title || "").trim(),
-            artist: String(t?.artist || "").trim(),
-            // API returns `youtubeUrl` as either a full URL or a videoId; both work.
-            youtubeUrl: String(t?.youtubeUrl || t?.youtube_video_id || "").trim(),
-          }))
+          .map((t) => {
+            const rawTitle = decodeHtmlEntities(String(t?.title || "")).trim();
+            const fallbackArtist = decodeHtmlEntities(String(t?.artist || "")).trim();
+            const parsed = splitArtistTitle(rawTitle, fallbackArtist);
+
+            return {
+              title: parsed.title || rawTitle,
+              artist: parsed.artist || fallbackArtist,
+              youtubeUrl: String(t?.youtubeUrl || t?.youtube_video_id || "").trim(),
+            };
+          })
           .filter((t) => t.youtubeUrl);
 
-        // Add this page's tracks
         for (const t of normalized) {
           if (collected.length >= MAX_TRACKS) break;
           collected.push(t);
         }
 
-        // Stop if there is no next page
         pageToken = json?.nextPageToken || null;
         if (!pageToken) break;
       }
 
-      if (!collected.length) {
-        throw new Error("No public tracks found in that playlist.");
-      }
+      if (!collected.length) throw new Error("No public tracks found in that playlist.");
 
-      // Replace the current tracks with the imported playlist tracks.
       setTracks(collected);
     } catch (e) {
       setError(e?.message || "Could not import playlist.");
@@ -343,13 +529,8 @@ export default function NewPage() {
         }))
         .filter((t) => t.title || t.artist || t.youtubeUrl);
 
-      if (!normalizedTracks.length) {
-        throw new Error("Add at least 1 track (title + YouTube link or video id).");
-      }
-
-      if (normalizedTracks.length > MAX_TRACKS) {
-        throw new Error(`Too many tracks. Max is ${MAX_TRACKS}.`);
-      }
+      if (!normalizedTracks.length) throw new Error("Add at least 1 track (title + YouTube link or video id).");
+      if (normalizedTracks.length > MAX_TRACKS) throw new Error(`Too many tracks. Max is ${MAX_TRACKS}.`);
 
       const tracksToInsert = normalizedTracks.map((t, idx) => {
         const yid = parseYouTubeId(t.youtubeUrl);
@@ -367,9 +548,19 @@ export default function NewPage() {
       // store first track id on the playlist for quick preview
       const firstYoutubeId = tracksToInsert[0]?.youtube_video_id || null;
 
+      // Store the creator handle on the playlist row so cards/search can show the real @handle.
+      const rawHandle =
+        user?.user_metadata?.handle ||
+        user?.user_metadata?.username ||
+        user?.email?.split("@")[0] ||
+        "user";
+
+      const owner_handle = rawHandle.startsWith("@") ? rawHandle : `@${rawHandle}`;
+
       // 4c) insert playlist
       const payload = {
         user_id: user.id,
+        owner_handle,
 
         // content
         title: cleanTitle,
@@ -562,7 +753,6 @@ export default function NewPage() {
                   value={ytQuery}
                   onChange={(e) => setYtQuery(e.target.value)}
                   onFocus={() => {
-                    // reopen if we already have results
                     if (ytResults.length || ytSearchError) setYtSearchOpen(true);
                   }}
                   placeholder="Search songs (adds as tracks)…"

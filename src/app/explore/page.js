@@ -855,7 +855,14 @@ export default function ExplorePage() {
                         )}
 
                         <div className="text-xs mt-1" style={{ color: "var(--fog)" }}>
-                          by <span style={{ color: "var(--gold)" }}>{handle}</span>
+                          by{" "}
+                          <Link
+                            href={`/u/${handle.replace(/^@/, "")}`}
+                            style={{ color: "var(--gold)" }}
+                            className="hover:underline"
+                          >
+                            {handle}
+                          </Link>
                         </div>
                       </div>
 

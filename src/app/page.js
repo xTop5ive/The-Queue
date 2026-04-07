@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createServerClient } from "@/lib/supabase-server";
+import FriendsInTheRoom from "./components/FriendsInTheRoom";
 
 export const dynamic = "force-dynamic";
 
@@ -175,59 +176,86 @@ export default async function HomePage() {
   // Deterministic daily pick
   const djPick = djModes[(new Date().getDate() - 1) % djModes.length];
 
-  const friends = [
-    { name: "Maya", handle: "mayamay", mood: "Late-night R&B" },
-    { name: "Ken", handle: "kenny", mood: "Afrobeats warmup" },
-    { name: "Tee", handle: "tee", mood: "Trap gym set" },
-    { name: "Ari", handle: "ari", mood: "Smooth jazz + neo-soul" },
-  ];
+  // Real recent creators: pull profiles that have at least one public playlist
+  const recentCreatorIds = Array.from(
+    new Set(
+      [...publicPlaylists]
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .map((p) => p.userId)
+        .filter(Boolean)
+    )
+  ).slice(0, 8);
 
-  const Card = ({ p }) => (
-    <Link href={`/p/${p.id}`} className="card p-4 hover:border-white/20 transition hover:-translate-y-0.5">
-      <div className="flex gap-3">
-        <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-white/10 bg-white/5 flex-shrink-0">
-          {p.coverUrl ? (
-            <img src={p.coverUrl} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
-          ) : (
-            <div className="w-full h-full grid place-items-center text-[10px] text-white/60">no cover</div>
+  const { data: creatorRows } = await supabase
+    .from("profiles")
+    .select("id, handle, username, display_name, avatar_url, music_dna, role")
+    .in("id", recentCreatorIds);
+
+  // Preserve the "most recently active" order
+  const creatorMap = Object.fromEntries((creatorRows || []).map((r) => [r.id, r]));
+  const recentCreators = recentCreatorIds
+    .map((id) => creatorMap[id])
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const Card = ({ p }) => {
+    const rawHandle = String(p.handle || "").replace(/^@/, "");
+    return (
+      <div className="card overflow-hidden hover:-translate-y-0.5 transition">
+        <Link href={`/p/${p.id}`} className="block">
+          <div className="relative">
+            {p.coverUrl ? (
+              <img
+                src={p.coverUrl}
+                alt=""
+                className="w-full object-cover"
+                style={{ height: 170 }}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div
+                className="w-full flex items-center justify-center text-white/20 text-sm"
+                style={{ height: 170, background: "color-mix(in srgb, var(--midnight) 80%, var(--line))" }}
+              >
+                No cover
+              </div>
+            )}
+            <div
+              className="absolute inset-x-0 bottom-0 p-3"
+              style={{ background: "linear-gradient(to top, rgba(0,0,0,0.82), transparent)" }}
+            >
+              <div className="font-semibold leading-tight truncate">{p.title}</div>
+              <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>♥ {p.likes ?? 0}</div>
+            </div>
+          </div>
+        </Link>
+        <div className="p-4">
+          {rawHandle && (
+            <Link href={`/u/${rawHandle}`} className="text-xs hover:underline" style={{ color: "var(--muted)" }}>
+              @{rawHandle}
+            </Link>
           )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold truncate">{p.title}</div>
           {p.description ? (
-            <div className="text-sm text-white/60 line-clamp-2">{p.description}</div>
+            <div className="text-sm text-white/70 line-clamp-2 mt-1">{p.description}</div>
           ) : (
-            <div className="text-sm text-white/40">No description</div>
+            <div className="text-sm text-white/30 mt-1">No description.</div>
           )}
-          <div className="text-xs mt-1">
-            <span className="text-white/50">by </span>
-            <span className="text-white/80">{p.handle}</span>
-          </div>
-
-          <div className="text-xs text-white/50 mt-1 flex flex-wrap items-center gap-2">
-            {typeof p.avgBpm === "number" ? <span>{p.avgBpm} BPM</span> : null}
-            {typeof p.energy === "number" ? <span>Energy {p.energy}/10</span> : null}
-            {typeof p.clean === "boolean" ? <span>{p.clean ? "Clean" : "Explicit"}</span> : null}
-            {Array.isArray(p.keys) && p.keys.length ? <span>{p.keys.length} keys</span> : null}
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {(p.tags ?? []).slice(0, 4).map((t) => (
+              <span
+                key={`${p.id}-${t}`}
+                className="text-xs px-2.5 py-1 rounded-full border"
+                style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)", color: "var(--muted)" }}
+              >
+                #{t}
+              </span>
+            ))}
           </div>
         </div>
-
-        <div className="text-sm text-white/70 flex items-center gap-1 flex-shrink-0">
-          <span aria-hidden>♥</span>
-          <span>{p.likes ?? 0}</span>
-        </div>
       </div>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {(p.tags ?? []).slice(0, 4).map((t) => (
-          <span key={`${p.id}-${t}`} className="text-xs px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-white/80">
-            {t}
-          </span>
-        ))}
-      </div>
-    </Link>
-  );
+    );
+  };
 
   const Row = ({ title, subtitle, items, href = "/explore" }) => (
     <section className="mt-8">
@@ -328,6 +356,8 @@ export default async function HomePage() {
         </div>
       </div>
 
+      <FriendsInTheRoom />
+
       <Row title="Tonight’s Picks" subtitle="Rotates daily (deterministic shuffle)." items={tonight} />
       <Row title="Hot right now" subtitle="Most liked in the room." items={hot} />
       <Row title="New" subtitle="Fresh drops and new vibes." items={newest} />
@@ -346,35 +376,70 @@ export default async function HomePage() {
         href={djPick.href}
       />
 
-      {/* Friends listening */}
-      <section className="mt-8">
-        <div className="flex items-end justify-between gap-3 mb-3">
-          <div>
-            <h2 className="text-xl font-semibold">Friends in the room</h2>
-            <p className="text-white/60 text-sm mt-1">What people are listening to (demo).</p>
+      {/* Active Creators */}
+      {recentCreators.length > 0 && (
+        <section className="mt-8">
+          <div className="flex items-end justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-xl font-semibold">Active Creators</h2>
+              <p className="text-white/60 text-sm mt-1">People dropping new playlists right now.</p>
+            </div>
+            <Link href="/explore" className="text-sm underline text-white/70 hover:text-white">See all</Link>
           </div>
-          <Link href="/explore" className="text-sm underline text-white/70 hover:text-white">Explore</Link>
-        </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {friends.map((f) => (
-            <Link key={f.handle} href={`/u/${f.handle}`} className="card p-4 hover:border-white/20 transition">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white/10 border border-white/10 grid place-items-center text-white/70">
-                  {f.name.slice(0, 1)}
-                </div>
-                <div className="min-w-0">
-                  <div className="font-semibold truncate">{f.name}</div>
-                  <div className="text-xs text-white/50 truncate">@{f.handle}</div>
-                </div>
-              </div>
-              <div className="mt-3 text-sm text-white/70">
-                Listening: <span className="text-white/90">{f.mood}</span>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </section>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {recentCreators.map((c) => {
+              const rawHandle = (c.handle || c.username || "").replace(/^@/, "");
+              const displayHandle = rawHandle ? `@${rawHandle}` : "@user";
+              const displayName = c.display_name || c.username || rawHandle || "Creator";
+              const initial = displayName.charAt(0).toUpperCase();
+              return (
+                <Link
+                  key={c.id}
+                  href={`/u/${rawHandle}`}
+                  className="card p-4 hover:border-white/20 hover:-translate-y-0.5 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-full border overflow-hidden flex-shrink-0 grid place-items-center text-white/70 font-semibold"
+                      style={{
+                        borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
+                        background: "color-mix(in srgb, var(--midnight) 85%, transparent)",
+                      }}
+                    >
+                      {c.avatar_url ? (
+                        <img src={c.avatar_url} alt={displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        initial
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-semibold truncate">{displayName}</div>
+                      <div className="text-xs truncate" style={{ color: "var(--muted)" }}>{displayHandle}</div>
+                    </div>
+                  </div>
+                  {c.role || c.music_dna ? (
+                    <div className="mt-3 text-sm text-white/60 truncate">
+                      {c.role ? (
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full border mr-2"
+                          style={{
+                            borderColor: "color-mix(in srgb, var(--gold) 50%, transparent)",
+                            color: "color-mix(in srgb, var(--gold) 90%, white)",
+                          }}
+                        >
+                          {c.role}
+                        </span>
+                      ) : null}
+                      {c.music_dna || ""}
+                    </div>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {error ? <div className="mt-8 text-red-400">Error loading playlists: {String(error.message || error)}</div> : null}
     </div>

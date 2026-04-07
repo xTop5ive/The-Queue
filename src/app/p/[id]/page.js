@@ -2,6 +2,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePlayerContext } from "@/app/components/player/PlayerProvider";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
@@ -113,6 +114,24 @@ export default function PlaylistPage() {
 
   const supabase = useMemo(() => getSupabase(), []);
 
+  // --- Global Player Context (if available) ---
+  const player = usePlayerContext?.() || null;
+  const loadQueue = player?.loadQueue;
+  const queuePlay = player?.play;
+  const queueIsPlaying = !!player?.isPlaying;
+  const queueCurrentTrack = player?.currentTrack || null;
+  const queueIndex = typeof player?.index === "number" ? player.index : 0;
+  const queueNext = player?.next;
+  const queuePrev = player?.prev;
+  const queueToggle = player?.toggle;
+  const hasPlayer = !!player;
+  const queueProgress = typeof player?.progress === "number" ? player.progress : 0;
+  const queueCurrentTime = typeof player?.currentTime === "number" ? player.currentTime : 0;
+  const queueDuration = typeof player?.duration === "number" ? player.duration : 0;
+  const queueSeekToPercent = player?.seekToPercent;
+  const queueSetIsSeeking = player?.setIsSeeking;
+  const queueSetCurrentTime = player?.setCurrentTime;
+
   const [loading, setLoading] = useState(true);
   const [p, setP] = useState(null);
   const [moreBy, setMoreBy] = useState([]);
@@ -126,16 +145,13 @@ export default function PlaylistPage() {
   const [likeBusy, setLikeBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
-  // --- Simple YouTube player state (Option B MVP) ---
-  // NOTE: This keeps playback while you stay on THIS page.
-  // To keep playing across the whole app, move the player into src/app/layout.js later.
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  // Tracks loaded from public.playlist_tracks
-  // Track shape: { id, position, title, artist, youtube_video_id }
+  // Fallback local player state (only used if global player context is unavailable)
+  const [fallbackVideoId, setFallbackVideoId] = useState("");
+  const [fallbackTrackIndex, setFallbackTrackIndex] = useState(0);
   const [tracks, setTracks] = useState([]);
-  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
-  const [currentVideoId, setCurrentVideoId] = useState("");
+  const isPlaying = queueIsPlaying;
+  const currentTrackIndex = player ? queueIndex : fallbackTrackIndex;
+  const currentVideoId = player ? (queueCurrentTrack?.youtube_video_id || queueCurrentTrack?.videoId || queueCurrentTrack?.youtubeUrl || "") : fallbackVideoId;
 
   const likedQP = sp?.get("liked") === "1";
 
@@ -236,19 +252,20 @@ export default function PlaylistPage() {
 
           if (alive) setTracks(list);
 
-          // Choose initial current track
+          // Choose initial current track for local fallback only.
+          // Real playback should go through the global player queue.
           if (list.length) {
             const firstId = extractYouTubeId(list[0]?.youtube_video_id);
-            if (alive) {
-              setCurrentTrackIndex(0);
-              setCurrentVideoId(firstId || "");
+            if (alive && !hasPlayer) {
+              setFallbackTrackIndex(0);
+              setFallbackVideoId(firstId || "");
             }
           } else {
             // Fallback to single playlist-level field (optional)
             const fallback = extractYouTubeId(normalized.youtubeId);
-            if (alive) {
-              setCurrentTrackIndex(0);
-              setCurrentVideoId(fallback || "");
+            if (alive && !hasPlayer) {
+              setFallbackTrackIndex(0);
+              setFallbackVideoId(fallback || "");
             }
           }
         }
@@ -296,7 +313,7 @@ export default function PlaylistPage() {
     return () => {
       alive = false;
     };
-  }, [id, router, supabase, refreshLikeState]);
+  }, [id, router, supabase, refreshLikeState, hasPlayer]);
 
   useEffect(() => {
     // if someone uses the old demo toggle, keep UI in sync but prefer real likes
@@ -404,11 +421,37 @@ export default function PlaylistPage() {
   const handle = ownerHandle;
   const isOwner = (p.userId ?? p.user_id) && user?.id && (p.userId ?? p.user_id) === user.id;
 
-  // Play a specific track index from this playlist
+  function fmtTime(sec) {
+    const s = Math.max(0, Math.floor(Number(sec) || 0));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${String(r).padStart(2, "0")}`;
+  }
+
+  function getQueueTracks() {
+    return (tracks || []).map((t) => ({
+      ...t,
+      coverUrl: p?.coverUrl || p?.cover_url || "",
+    }));
+  }
+
   function playAt(idx) {
     const safeIdx = Math.max(0, Math.min(idx, Math.max(0, tracks.length - 1)));
 
-    // If there are real tracks, use them
+    // Preferred path: real global queue playback
+    if (loadQueue && tracks.length) {
+      loadQueue(getQueueTracks(), safeIdx, { playlistId: p?.id, playlistTitle: p?.title });
+
+      // Explicitly start playback after loading the queue
+      if (queuePlay) {
+        setTimeout(() => {
+          queuePlay();
+        }, 120);
+      }
+      return;
+    }
+
+    // Local fallback if player context is unavailable
     if (tracks.length) {
       const raw = tracks[safeIdx]?.youtube_video_id || "";
       const vid = extractYouTubeId(raw);
@@ -418,47 +461,73 @@ export default function PlaylistPage() {
         return;
       }
 
-      setCurrentTrackIndex(safeIdx);
-      setCurrentVideoId(vid);
-      setIsPlaying(true);
+      setFallbackTrackIndex(safeIdx);
+      setFallbackVideoId(vid);
       return;
     }
 
-    // Fallback to playlist-level field
     const fallback = extractYouTubeId(p?.youtubeId);
     if (!fallback) {
-      alert(
-        "No tracks saved yet. Add tracks (YouTube IDs) to this playlist, then come back and press Play."
-      );
+      alert("No tracks saved yet. Add tracks (YouTube IDs) to this playlist, then come back and press Play.");
       return;
     }
 
-    setCurrentTrackIndex(0);
-    setCurrentVideoId(fallback);
-    setIsPlaying(true);
+    setFallbackTrackIndex(0);
+    setFallbackVideoId(fallback);
   }
 
   function startPlayback() {
-    // If already playing a valid id, keep it. Otherwise play the first track.
-    const currentOk = extractYouTubeId(currentVideoId);
-    if (currentOk) {
-      setIsPlaying(true);
-      return;
+    // Preferred path: use global player queue
+    if (loadQueue) {
+      if (queueCurrentTrack) {
+        if (queueToggle && !queueIsPlaying) {
+          queueToggle();
+        }
+        return;
+      }
+
+      if (tracks.length) {
+        loadQueue(getQueueTracks(), 0, { playlistId: p?.id, playlistTitle: p?.title });
+
+        if (queuePlay) {
+          setTimeout(() => {
+            queuePlay();
+          }, 120);
+        }
+        return;
+      }
     }
+
+    // Local fallback
+    const currentOk = extractYouTubeId(currentVideoId);
+    if (currentOk) return;
     playAt(0);
   }
 
   function pausePlayback() {
-    setIsPlaying(false);
+    if (queueToggle && queueIsPlaying) {
+      queueToggle();
+      return;
+    }
   }
 
   function nextTrack() {
+    if (queueNext) {
+      queueNext();
+      return;
+    }
+
     if (!tracks.length) return;
     const next = Math.min(tracks.length - 1, currentTrackIndex + 1);
     playAt(next);
   }
 
   function prevTrack() {
+    if (queuePrev) {
+      queuePrev();
+      return;
+    }
+
     if (!tracks.length) return;
     const prev = Math.max(0, currentTrackIndex - 1);
     playAt(prev);
@@ -511,7 +580,14 @@ export default function PlaylistPage() {
 
             <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
               <span className="text-white/80">
-                by <span style={{ color: "var(--gold)" }}>{handle}</span>
+                by{" "}
+                <Link
+                  href={`/u/${handle.replace(/^@/, "")}`}
+                  style={{ color: "var(--gold)" }}
+                  className="hover:underline"
+                >
+                  {handle}
+                </Link>
               </span>
               <span className="text-white/40">•</span>
               <span className="text-white/70">♥ {likesCount || p.likes || 0} likes</span>
@@ -522,7 +598,7 @@ export default function PlaylistPage() {
             {/* Actions */}
             <div className="mt-6 flex flex-wrap items-center gap-2">
               <button className="inBtn" type="button" onClick={startPlayback}>
-                ▶ {tracks.length ? "Play" : extractYouTubeId(currentVideoId || p?.youtubeId) ? "Play" : "Play (add tracks)"}
+                ▶ {tracks.length ? (queueIsPlaying ? "Play from start" : "Play") : extractYouTubeId(currentVideoId || p?.youtubeId) ? "Play" : "Play (add tracks)"}
               </button>
 
               <button
@@ -846,18 +922,25 @@ export default function PlaylistPage() {
               className="w-12 h-12 rounded-lg overflow-hidden border flex-shrink-0"
               style={{ borderColor: "color-mix(in srgb, var(--line) 75%, transparent)" }}
             >
-              <img
-                src={p.coverUrl || "/placeholder-cover.png"}
-                alt=""
-                className="w-full h-full object-cover"
-                loading="lazy"
-                referrerPolicy="no-referrer"
-              />
+              {(queueCurrentTrack?.coverUrl || p.coverUrl) ? (
+                <img
+                  src={queueCurrentTrack?.coverUrl || p.coverUrl || "/placeholder-cover.png"}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.src = "/placeholder-cover.png";
+                  }}
+                />
+              ) : (
+                <div className="w-full h-full" style={{ background: "color-mix(in srgb, var(--midnight) 80%, transparent)" }} />
+              )}
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold truncate">{p.title}</div>
+              <div className="text-sm font-semibold truncate">{queueCurrentTrack?.title || p.title}</div>
               <div className="text-xs" style={{ color: "var(--muted)" }}>
-                Playing: {tracks.length ? (tracks[currentTrackIndex]?.title || "Track") : "Track"} • {handle}
+                Playing: {queueCurrentTrack?.title || (tracks.length ? (tracks[currentTrackIndex]?.title || "Track") : "Track")} • {handle}
               </div>
             </div>
           </div>
@@ -967,7 +1050,7 @@ export default function PlaylistPage() {
         {/* YouTube embed (Option B MVP)
             This will keep playing while you stay on this page.
             Next step for true app-wide playback: move this player into src/app/layout.js. */}
-        {extractYouTubeId(currentVideoId) ? (
+        {!player && extractYouTubeId(currentVideoId) ? (
           <div className="max-w-6xl mx-auto px-5 pb-3">
             <div
               className="mt-2 rounded-xl overflow-hidden border"
@@ -993,14 +1076,33 @@ export default function PlaylistPage() {
           </div>
         ) : null}
 
-        {/* Progress (stub) */}
+        {/* Progress */}
         <div className="max-w-6xl mx-auto px-5 pb-3">
-          <div className="h-1 rounded-full" style={{ background: "color-mix(in srgb, var(--line) 60%, transparent)" }}>
-            <div className="h-1 rounded-full" style={{ width: "35%", background: "var(--gold)" }} />
-          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={queueProgress || 0}
+            onMouseDown={() => queueSetIsSeeking?.(true)}
+            onMouseUp={(e) => {
+              queueSeekToPercent?.(Number(e.currentTarget.value || 0));
+              queueSetIsSeeking?.(false);
+            }}
+            onTouchStart={() => queueSetIsSeeking?.(true)}
+            onTouchEnd={(e) => {
+              queueSeekToPercent?.(Number(e.currentTarget.value || 0));
+              queueSetIsSeeking?.(false);
+            }}
+            onChange={(e) => {
+              const pct = Number(e.currentTarget.value || 0);
+              const nextSeconds = queueDuration ? (pct / 100) * queueDuration : 0;
+              queueSetCurrentTime?.(nextSeconds);
+            }}
+            className="w-full"
+          />
           <div className="mt-1 flex justify-between text-[11px]" style={{ color: "var(--muted)" }}>
-            <span>0:42</span>
-            <span>2:34</span>
+            <span>{fmtTime(queueCurrentTime)}</span>
+            <span>{fmtTime(queueDuration)}</span>
           </div>
         </div>
       </div>
