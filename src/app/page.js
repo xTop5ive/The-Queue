@@ -4,26 +4,7 @@ import FriendsInTheRoom from "./components/FriendsInTheRoom";
 
 export const dynamic = "force-dynamic";
 
-function pill(text, href) {
-  if (href) {
-    return (
-      <a
-        href={href}
-        className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-sm text-white/80 hover:bg-white/20 transition"
-      >
-        {text}
-      </a>
-    );
-  }
-  return (
-    <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-sm text-white/80">
-      {text}
-    </span>
-  );
-}
-
 function dayKey() {
-  // YYYY-MM-DD in server timezone (good enough for “daily rotation”)
   return new Date().toISOString().slice(0, 10);
 }
 
@@ -31,9 +12,7 @@ function pickFeaturedGenre() {
   const genres = ["r&b", "hip-hop", "pop", "afrobeats", "trap", "house", "latin", "dancehall"];
   const d = new Date();
   const start = new Date(d.getFullYear(), 0, 0);
-  const diff = d - start;
-  const oneDay = 1000 * 60 * 60 * 24;
-  const dayOfYear = Math.floor(diff / oneDay);
+  const dayOfYear = Math.floor((d - start) / (1000 * 60 * 60 * 24));
   return genres[dayOfYear % genres.length];
 }
 
@@ -47,234 +26,133 @@ function mapPlaylist(row, handleByUserId) {
     coverUrl: row.cover_url,
     createdAt: row.created_at,
     likes: row.likes_count ?? 0,
-
-    // Prefer stored owner_handle (if your DB has it). Otherwise fall back to profiles lookup.
-    handle:
-      row.owner_handle ||
-      handleByUserId?.[row.user_id] ||
-      "@user",
-
+    handle: row.owner_handle || handleByUserId?.[row.user_id] || "@user",
     userId: row.user_id,
-
-    // DJ-style metadata (optional columns)
     avgBpm: typeof row.avg_bpm === "number" ? row.avg_bpm : null,
-    energy: typeof row.energy === "number" ? row.energy : null, // 1–10
+    energy: typeof row.energy === "number" ? row.energy : null,
     clean: typeof row.clean === "boolean" ? row.clean : null,
     keys: Array.isArray(row.keys) ? row.keys : [],
   };
 }
 
-export default async function HomePage() {
-  const supabase = createServerClient();
+// ── Playlist card ─────────────────────────────────────────────────────────────
+function Card({ p }) {
+  const rawHandle = String(p.handle || "").replace(/^@/, "");
 
-  // 1) pull a chunk of public playlists once
-  const { data: baseRows, error } = await supabase
-    .from("playlists")
-    .select("id,user_id,title,description,tags,is_public,cover_url,created_at,likes_count,owner_handle,avg_bpm,energy,clean,keys")
-    .eq("is_public", true)
-    .limit(80);
-
-  // 1b) build a handle lookup so Home can show real @handles
-  const userIds = Array.from(
-    new Set((baseRows || []).map((r) => r.user_id).filter(Boolean))
-  );
-
-  const handleByUserId = {};
-
-  if (userIds.length) {
-    // If you have a public profiles table (recommended), use it.
-    // Expected columns: id (uuid), handle (text) OR username (text)
-    const { data: profRows } = await supabase
-      .from("profiles")
-      .select("id,handle,username")
-      .in("id", userIds);
-
-    (profRows || []).forEach((pr) => {
-      const raw = (pr?.handle || pr?.username || "").trim();
-      if (!raw) return;
-      handleByUserId[pr.id] = raw.startsWith("@") ? raw : `@${raw}`;
-    });
-  }
-
-  const publicPlaylists = (baseRows || []).map((r) => mapPlaylist(r, handleByUserId));
-
-  // 2) HOT + NEW are straightforward
-  const hot = [...publicPlaylists].sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0)).slice(0, 6);
-  const newest = [...publicPlaylists]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 6);
-
-  // 3) TONIGHT’S PICKS (daily rotation)
-  const dk = dayKey();
-  const tonight = [...publicPlaylists]
-    .sort((a, b) => {
-      // deterministic “shuffle” via string compare (simple + stable)
-      const ak = `${a.id}-${dk}`;
-      const bk = `${b.id}-${dk}`;
-      return ak.localeCompare(bk);
-    })
-    .slice(0, 6);
-
-  // 4) FEATURED GENRE row (rotates daily)
-  const featuredGenre = pickFeaturedGenre();
-  const featured = publicPlaylists
-    .filter((p) => (p.tags || []).map((t) => String(t).toLowerCase()).includes(featuredGenre))
-    .slice(0, 6);
-
-  // 5) DJ-style rotation rows
-  // Energy Up: energetic playlists (>= 7/10)
-  const energyUp = publicPlaylists
-    .filter((p) => typeof p.energy === "number" && p.energy >= 7)
-    .sort((a, b) => (b.energy ?? 0) - (a.energy ?? 0))
-    .slice(0, 6);
-
-  // Clean Only: family-friendly playlists
-  const cleanOnly = publicPlaylists
-    .filter((p) => p.clean === true)
-    .sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0))
-    .slice(0, 6);
-
-  // 110–125 BPM: common mid-tempo pocket (great for pop/r&b/afrobeats sets)
-  const bpmPocket = publicPlaylists
-    .filter((p) => typeof p.avgBpm === "number" && p.avgBpm >= 110 && p.avgBpm <= 125)
-    .sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0))
-    .slice(0, 6);
-
-  // Key of the Day: rotates by day, picks a musical key and shows matching playlists
-  const keyOptions = [
-    "1A","2A","3A","4A","5A","6A","7A","8A","9A","10A","11A","12A",
-    "1B","2B","3B","4B","5B","6B","7B","8B","9B","10B","11B","12B",
-  ];
-  const keyOfDay = keyOptions[(new Date().getDate() - 1) % keyOptions.length];
-  const keyRow = publicPlaylists
-    .filter((p) => Array.isArray(p.keys) && p.keys.map((k) => String(k).toUpperCase()).includes(String(keyOfDay).toUpperCase()))
-    .slice(0, 6);
-
-  // 6) DJ Assist row (mainstream UI, DJ logic under the hood)
-  // Rotates daily between: energy / clean / bpm pocket / key of the day.
-  const djModes = [
-    {
-      key: "energy",
-      title: "DJ Assist: Energy Up",
-      subtitle: "High-energy picks (7–10).",
-      items: energyUp,
-      href: "/explore?energyMin=7",
-    },
-    {
-      key: "clean",
-      title: "DJ Assist: Clean Only",
-      subtitle: "Family-friendly playlists.",
-      items: cleanOnly,
-      href: "/explore?clean=1",
-    },
-    {
-      key: "bpm",
-      title: "DJ Assist: 110–125 BPM",
-      subtitle: "A smooth mid-tempo pocket.",
-      items: bpmPocket,
-      href: "/explore?bpmMin=110&bpmMax=125",
-    },
-    {
-      key: "key",
-      title: `DJ Assist: Key of the Day (${keyOfDay})`,
-      subtitle: "Harmonic-friendly picks (Camelot wheel).",
-      items: keyRow,
-      href: `/explore?key=${encodeURIComponent(String(keyOfDay))}`,
-    },
-  ];
-
-  // Deterministic daily pick
-  const djPick = djModes[(new Date().getDate() - 1) % djModes.length];
-
-  // Real recent creators: pull profiles that have at least one public playlist
-  const recentCreatorIds = Array.from(
-    new Set(
-      [...publicPlaylists]
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .map((p) => p.userId)
-        .filter(Boolean)
-    )
-  ).slice(0, 8);
-
-  const { data: creatorRows } = await supabase
-    .from("profiles")
-    .select("id, handle, username, display_name, avatar_url, music_dna, role")
-    .in("id", recentCreatorIds);
-
-  // Preserve the "most recently active" order
-  const creatorMap = Object.fromEntries((creatorRows || []).map((r) => [r.id, r]));
-  const recentCreators = recentCreatorIds
-    .map((id) => creatorMap[id])
-    .filter(Boolean)
-    .slice(0, 4);
-
-  const Card = ({ p }) => {
-    const rawHandle = String(p.handle || "").replace(/^@/, "");
-    return (
-      <div className="card overflow-hidden hover:-translate-y-0.5 transition">
-        <Link href={`/p/${p.id}`} className="block">
-          <div className="relative">
-            {p.coverUrl ? (
-              <img
-                src={p.coverUrl}
-                alt=""
-                className="w-full object-cover"
-                style={{ height: 170 }}
-                loading="lazy"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div
-                className="w-full flex items-center justify-center text-white/20 text-sm"
-                style={{ height: 170, background: "color-mix(in srgb, var(--midnight) 80%, var(--line))" }}
-              >
-                No cover
-              </div>
-            )}
-            <div
-              className="absolute inset-x-0 bottom-0 p-3"
-              style={{ background: "linear-gradient(to top, rgba(0,0,0,0.82), transparent)" }}
-            >
-              <div className="font-semibold leading-tight truncate">{p.title}</div>
-              <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>♥ {p.likes ?? 0}</div>
-            </div>
+  return (
+    <div
+      className="group rounded-2xl border overflow-hidden transition hover:border-white/20 flex flex-col"
+      style={{
+        borderColor: "color-mix(in srgb, var(--line) 70%, transparent)",
+        background: "color-mix(in srgb, var(--midnight) 75%, transparent)",
+      }}
+    >
+      {/* Cover */}
+      <Link href={`/p/${p.id}`} className="block relative flex-shrink-0" style={{ aspectRatio: "16/9" }}>
+        {p.coverUrl ? (
+          <img
+            src={p.coverUrl}
+            alt={p.title}
+            className="w-full h-full object-cover transition group-hover:brightness-90"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div
+            className="w-full h-full flex items-center justify-center text-4xl"
+            style={{ background: "color-mix(in srgb, var(--plum) 18%, var(--midnight))" }}
+          >
+            &#9835;
           </div>
+        )}
+        {/* Play overlay */}
+        <div
+          className="absolute inset-0 opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.4)" }}
+        >
+          <div
+            className="w-11 h-11 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)" }}
+          >
+            <span className="text-white text-lg pl-0.5">&#9654;</span>
+          </div>
+        </div>
+      </Link>
+
+      {/* Info */}
+      <div className="p-3 flex flex-col gap-1.5 flex-1">
+        <Link
+          href={`/p/${p.id}`}
+          className="font-semibold text-sm text-white hover:underline line-clamp-1 leading-snug"
+        >
+          {p.title}
         </Link>
-        <div className="p-4">
-          {rawHandle && (
-            <Link href={`/u/${rawHandle}`} className="text-xs hover:underline" style={{ color: "var(--muted)" }}>
+
+        <div className="flex items-center justify-between">
+          {rawHandle ? (
+            <Link
+              href={`/u/${rawHandle}`}
+              className="text-xs hover:underline truncate"
+              style={{ color: "var(--muted)" }}
+            >
               @{rawHandle}
             </Link>
-          )}
-          {p.description ? (
-            <div className="text-sm text-white/70 line-clamp-2 mt-1">{p.description}</div>
           ) : (
-            <div className="text-sm text-white/30 mt-1">No description.</div>
+            <span />
           )}
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {(p.tags ?? []).slice(0, 4).map((t) => (
+          <span className="text-xs flex-shrink-0 ml-2" style={{ color: "var(--muted)" }}>
+            &#9829; {p.likes ?? 0}
+          </span>
+        </div>
+
+        {(p.tags || []).length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-0.5">
+            {(p.tags || []).slice(0, 3).map((t) => (
               <span
                 key={`${p.id}-${t}`}
-                className="text-xs px-2.5 py-1 rounded-full border"
-                style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)", color: "var(--muted)" }}
+                className="text-[10px] px-2 py-0.5 rounded-full"
+                style={{
+                  background: "color-mix(in srgb, var(--plum) 18%, transparent)",
+                  color: "color-mix(in srgb, var(--plum) 85%, white)",
+                  border: "1px solid color-mix(in srgb, var(--plum) 28%, transparent)",
+                }}
               >
                 #{t}
               </span>
             ))}
           </div>
-        </div>
+        )}
       </div>
-    );
-  };
+    </div>
+  );
+}
 
-  const Row = ({ title, subtitle, items, href = "/explore" }) => (
-    <section className="mt-8">
-      <div className="flex items-end justify-between gap-3 mb-3">
-        <div>
-          <h2 className="text-xl font-semibold">{title}</h2>
-          {subtitle ? <p className="text-white/60 text-sm mt-1">{subtitle}</p> : null}
+// ── Section row ───────────────────────────────────────────────────────────────
+function Row({ title, subtitle, items, href = "/explore", accent }) {
+  return (
+    <section className="mt-12">
+      <div className="flex items-end justify-between gap-3 mb-5">
+        <div className="flex items-start gap-3">
+          {accent && (
+            <div
+              className="w-1 rounded-full mt-1 flex-shrink-0"
+              style={{ height: 22, background: accent }}
+            />
+          )}
+          <div>
+            <h2 className="text-xl font-semibold text-white">{title}</h2>
+            {subtitle && (
+              <p className="text-sm mt-0.5" style={{ color: "var(--muted)" }}>
+                {subtitle}
+              </p>
+            )}
+          </div>
         </div>
-        <Link href={href} className="text-sm underline text-white/70 hover:text-white">
+        <Link
+          href={href}
+          className="text-xs flex-shrink-0 hover:underline"
+          style={{ color: "var(--gold)" }}
+        >
           See all
         </Link>
       </div>
@@ -286,81 +164,221 @@ export default async function HomePage() {
       </div>
     </section>
   );
+}
+
+// ── Genre pill ────────────────────────────────────────────────────────────────
+function GenrePill({ label, href }) {
+  return (
+    <a
+      href={href}
+      className="px-3.5 py-1.5 rounded-full text-xs font-medium transition hover:opacity-80"
+      style={{
+        background: "color-mix(in srgb, var(--plum) 18%, transparent)",
+        color: "color-mix(in srgb, var(--plum) 85%, white)",
+        border: "1px solid color-mix(in srgb, var(--plum) 30%, transparent)",
+      }}
+    >
+      {label}
+    </a>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+export default async function HomePage() {
+  const supabase = createServerClient();
+
+  const { data: baseRows, error } = await supabase
+    .from("playlists")
+    .select("id,user_id,title,description,tags,is_public,cover_url,created_at,likes_count,owner_handle,avg_bpm,energy,clean,keys")
+    .eq("is_public", true)
+    .limit(80);
+
+  const userIds = Array.from(
+    new Set((baseRows || []).map((r) => r.user_id).filter(Boolean))
+  );
+
+  const handleByUserId = {};
+  if (userIds.length) {
+    const { data: profRows } = await supabase
+      .from("profiles")
+      .select("id,handle,username")
+      .in("id", userIds);
+    (profRows || []).forEach((pr) => {
+      const raw = (pr?.handle || pr?.username || "").trim();
+      if (!raw) return;
+      handleByUserId[pr.id] = raw.startsWith("@") ? raw : `@${raw}`;
+    });
+  }
+
+  const publicPlaylists = (baseRows || []).map((r) => mapPlaylist(r, handleByUserId));
+
+  const hot = [...publicPlaylists].sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0)).slice(0, 6);
+  const newest = [...publicPlaylists]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 6);
+
+  const dk = dayKey();
+  const tonight = [...publicPlaylists]
+    .sort((a, b) => `${a.id}-${dk}`.localeCompare(`${b.id}-${dk}`))
+    .slice(0, 6);
+
+  const featuredGenre = pickFeaturedGenre();
+  const featured = publicPlaylists
+    .filter((p) => (p.tags || []).map((t) => String(t).toLowerCase()).includes(featuredGenre))
+    .slice(0, 6);
+
+  // DJ Assist row
+  const energyUp = publicPlaylists.filter((p) => typeof p.energy === "number" && p.energy >= 7)
+    .sort((a, b) => (b.energy ?? 0) - (a.energy ?? 0)).slice(0, 6);
+  const cleanOnly = publicPlaylists.filter((p) => p.clean === true)
+    .sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0)).slice(0, 6);
+  const bpmPocket = publicPlaylists.filter((p) => typeof p.avgBpm === "number" && p.avgBpm >= 110 && p.avgBpm <= 125)
+    .sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0)).slice(0, 6);
+  const keyOptions = ["1A","2A","3A","4A","5A","6A","7A","8A","9A","10A","11A","12A","1B","2B","3B","4B","5B","6B","7B","8B","9B","10B","11B","12B"];
+  const keyOfDay = keyOptions[(new Date().getDate() - 1) % keyOptions.length];
+  const keyRow = publicPlaylists.filter((p) => Array.isArray(p.keys) && p.keys.map((k) => String(k).toUpperCase()).includes(String(keyOfDay).toUpperCase())).slice(0, 6);
+  const djModes = [
+    { title: "DJ Assist: Energy Up", subtitle: "High-energy picks (7-10).", items: energyUp, href: "/explore?energyMin=7" },
+    { title: "DJ Assist: Clean Only", subtitle: "Family-friendly playlists.", items: cleanOnly, href: "/explore?clean=1" },
+    { title: "DJ Assist: 110-125 BPM", subtitle: "A smooth mid-tempo pocket.", items: bpmPocket, href: "/explore?bpmMin=110&bpmMax=125" },
+    { title: `DJ Assist: Key of the Day (${keyOfDay})`, subtitle: "Harmonic-friendly picks.", items: keyRow, href: `/explore?key=${encodeURIComponent(String(keyOfDay))}` },
+  ];
+  const djPick = djModes[(new Date().getDate() - 1) % djModes.length];
+
+  // Active creators
+  const recentCreatorIds = Array.from(new Set(
+    [...publicPlaylists]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .map((p) => p.userId).filter(Boolean)
+  )).slice(0, 8);
+
+  const { data: creatorRows } = await supabase
+    .from("profiles")
+    .select("id, handle, username, display_name, avatar_url, music_dna, role")
+    .in("id", recentCreatorIds);
+
+  const creatorMap = Object.fromEntries((creatorRows || []).map((r) => [r.id, r]));
+  const recentCreators = recentCreatorIds.map((id) => creatorMap[id]).filter(Boolean).slice(0, 4);
+
+  const totalPlaylists = publicPlaylists.length;
+  const totalCreators = recentCreatorIds.length;
 
   return (
     <div className="max-w-6xl mx-auto px-5 py-10">
-      {/* Hero */}
+
+      {/* ── Hero ────────────────────────────────────────────────────────── */}
       <div
-        className="card p-8 md:p-10 overflow-hidden relative"
+        className="rounded-3xl border p-8 md:p-12 overflow-hidden relative"
         style={{
+          borderColor: "color-mix(in srgb, var(--line) 60%, transparent)",
           background:
-            "radial-gradient(900px 420px at 15% 10%, rgba(246, 193, 109, 0.14) 0%, rgba(0,0,0,0) 55%), radial-gradient(700px 320px at 85% 20%, rgba(99, 102, 241, 0.12) 0%, rgba(0,0,0,0) 52%), linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0) 100%)",
+            "radial-gradient(900px 420px at 10% 0%, rgba(246,193,109,0.12) 0%, transparent 55%), " +
+            "radial-gradient(600px 300px at 90% 10%, rgba(99,102,241,0.10) 0%, transparent 52%), " +
+            "color-mix(in srgb, var(--midnight) 95%, transparent)",
         }}
       >
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
-              <span className="w-2 h-2 rounded-full" style={{ background: "var(--gold)" }} />
-              Luxury club mode
-              <span className="text-white/40">•</span>
-              <span className="text-white/80">Curate. Share. Replay.</span>
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-10">
+          <div className="max-w-xl">
+            {/* Badge */}
+            <div
+              className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs mb-5"
+              style={{
+                background: "color-mix(in srgb, var(--gold) 10%, transparent)",
+                color: "var(--gold)",
+                border: "1px solid color-mix(in srgb, var(--gold) 25%, transparent)",
+              }}
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: "var(--gold)" }}
+              />
+              Luxury club mode &mdash; Curate. Share. Replay.
             </div>
 
-            <h1 className="mt-4 text-4xl md:text-6xl font-semibold tracking-tight">The Queue</h1>
-            <p className="text-white/60 mt-3 text-base md:text-lg max-w-xl">
-              Curate the moment. Share the vibe.
-              <span className="text-white/40"> Build playlists that feel like a room.</span>
+            <h1 className="text-5xl md:text-6xl font-semibold tracking-tight text-white leading-none">
+              The Queue
+            </h1>
+            <p className="mt-4 text-white/55 text-base md:text-lg">
+              Build playlists that feel like a room.{" "}
+              <span className="text-white/30">Share the vibe.</span>
             </p>
 
-            <div className="mt-6 flex flex-wrap gap-3">
+            {/* CTAs */}
+            <div className="mt-7 flex flex-wrap gap-3">
               <Link
                 href="/explore"
-                className="px-5 py-2.5 rounded-full font-semibold border transition hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-white/20"
+                className="px-6 py-2.5 rounded-full font-semibold text-sm transition hover:opacity-90"
                 style={{
-                  background: "linear-gradient(90deg, rgba(99,102,241,0.95), rgba(147,51,234,0.95))",
-                  borderColor: "transparent",
+                  background: "linear-gradient(90deg, rgba(99,102,241,0.9), rgba(147,51,234,0.9))",
                   color: "white",
                 }}
               >
-                Explore
+                Explore playlists
               </Link>
-
               <Link
                 href="/new"
-                className="px-5 py-2.5 rounded-full font-semibold border transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/20"
+                className="px-6 py-2.5 rounded-full font-semibold text-sm transition hover:bg-white/10"
                 style={{
                   background: "transparent",
-                  borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
                   color: "var(--fog)",
+                  border: "1px solid color-mix(in srgb, var(--line) 80%, transparent)",
                 }}
               >
                 Create playlist
               </Link>
             </div>
 
-            <div className="mt-7 flex flex-wrap gap-2">
-              {pill("R&B", "/explore?tags=r%26b")}
-              {pill("Hip-Hop", "/explore?tags=hip-hop")}
-              {pill("Afrobeats", "/explore?tags=afrobeats")}
-              {pill("House", "/explore?tags=house")}
-              {pill("Trap", "/explore?tags=trap")}
-              {pill("Dancehall", "/explore?tags=dancehall")}
-              {pill("Latin", "/explore?tags=latin")}
+            {/* Stats */}
+            {totalPlaylists > 0 && (
+              <div className="mt-6 flex items-center gap-5 text-sm" style={{ color: "var(--muted)" }}>
+                <span>
+                  <span className="text-white font-semibold">{totalPlaylists}</span> playlists
+                </span>
+                <span
+                  className="w-px h-4"
+                  style={{ background: "color-mix(in srgb, var(--line) 60%, transparent)" }}
+                />
+                <span>
+                  <span className="text-white font-semibold">{totalCreators}</span> creators
+                </span>
+              </div>
+            )}
+
+            {/* Genre pills */}
+            <div className="mt-6 flex flex-wrap gap-2">
+              {[
+                { label: "R&B", href: "/explore?tags=r%26b" },
+                { label: "Hip-Hop", href: "/explore?tags=hip-hop" },
+                { label: "Afrobeats", href: "/explore?tags=afrobeats" },
+                { label: "House", href: "/explore?tags=house" },
+                { label: "Trap", href: "/explore?tags=trap" },
+                { label: "Dancehall", href: "/explore?tags=dancehall" },
+                { label: "Latin", href: "/explore?tags=latin" },
+              ].map(({ label, href }) => (
+                <GenrePill key={label} label={label} href={href} />
+              ))}
             </div>
           </div>
 
-          <div className="hidden md:block">
-            <div className="relative w-44 h-44 rounded-3xl border border-white/10 bg-white/5 grid place-items-center overflow-hidden">
+          {/* Logo */}
+          <div className="hidden md:flex items-center justify-center flex-shrink-0">
+            <div
+              className="relative w-48 h-48 rounded-3xl border grid place-items-center overflow-hidden"
+              style={{
+                borderColor: "color-mix(in srgb, var(--line) 50%, transparent)",
+                background: "color-mix(in srgb, var(--midnight) 90%, transparent)",
+              }}
+            >
               <div
                 className="absolute inset-0 pointer-events-none"
                 style={{
                   background:
-                    "radial-gradient(220px 220px at 30% 30%, rgba(246, 193, 109, 0.20) 0%, rgba(0,0,0,0) 60%)",
+                    "radial-gradient(200px 200px at 30% 30%, rgba(246,193,109,0.15) 0%, transparent 60%)",
                 }}
               />
               <img
                 src="/Stylized%20%27Q%27%20Monogram%20with%20Play%20Button.png"
-                alt="The Queue logo"
+                alt="The Queue"
                 className="relative w-28 h-28 object-contain"
               />
             </div>
@@ -370,15 +388,35 @@ export default async function HomePage() {
 
       <FriendsInTheRoom />
 
-      <Row title="Tonight’s Picks" subtitle="Rotates daily (deterministic shuffle)." items={tonight} />
-      <Row title="Hot right now" subtitle="Most liked in the room." items={hot} />
-      <Row title="New" subtitle="Fresh drops and new vibes." items={newest} />
+      {/* ── Playlist rows ────────────────────────────────────────────────── */}
+      <Row
+        title="Tonight's Picks"
+        subtitle="A fresh rotation, every day."
+        items={tonight}
+        accent="var(--gold)"
+      />
 
       <Row
-        title={`Featured: ${featuredGenre.toUpperCase()}`}
-        subtitle="Rotates daily by genre tag."
+        title="Hot Right Now"
+        subtitle="Most liked in the room."
+        items={hot}
+        accent="color-mix(in srgb, #f87171 80%, transparent)"
+      />
+
+      <Row
+        title="New Drops"
+        subtitle="Fresh playlists just added."
+        items={newest}
+        href="/explore"
+        accent="color-mix(in srgb, var(--plum) 80%, transparent)"
+      />
+
+      <Row
+        title={`Featured: ${featuredGenre.charAt(0).toUpperCase() + featuredGenre.slice(1)}`}
+        subtitle="Rotates daily by genre."
         items={featured.length ? featured : tonight}
         href={`/explore?tags=${encodeURIComponent(featuredGenre)}`}
+        accent="color-mix(in srgb, #34d399 70%, transparent)"
       />
 
       <Row
@@ -386,66 +424,79 @@ export default async function HomePage() {
         subtitle={djPick.subtitle}
         items={(djPick.items && djPick.items.length) ? djPick.items : tonight}
         href={djPick.href}
+        accent="color-mix(in srgb, #60a5fa 70%, transparent)"
       />
 
-      {/* Active Creators */}
+      {/* ── Active Creators ──────────────────────────────────────────────── */}
       {recentCreators.length > 0 && (
-        <section className="mt-8">
-          <div className="flex items-end justify-between gap-3 mb-3">
-            <div>
-              <h2 className="text-xl font-semibold">Active Creators</h2>
-              <p className="text-white/60 text-sm mt-1">People dropping new playlists right now.</p>
+        <section className="mt-12">
+          <div className="flex items-end justify-between gap-3 mb-5">
+            <div className="flex items-start gap-3">
+              <div
+                className="w-1 rounded-full mt-1 flex-shrink-0"
+                style={{
+                  height: 22,
+                  background: "color-mix(in srgb, var(--gold) 80%, transparent)",
+                }}
+              />
+              <div>
+                <h2 className="text-xl font-semibold text-white">Active Creators</h2>
+                <p className="text-sm mt-0.5" style={{ color: "var(--muted)" }}>
+                  People dropping new playlists right now.
+                </p>
+              </div>
             </div>
-            <Link href="/explore" className="text-sm underline text-white/70 hover:text-white">See all</Link>
+            <Link href="/explore" className="text-xs hover:underline" style={{ color: "var(--gold)" }}>
+              See all
+            </Link>
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {recentCreators.map((c) => {
               const rawHandle = (c.handle || c.username || "").replace(/^@/, "");
-              const displayHandle = rawHandle ? `@${rawHandle}` : "@user";
               const displayName = c.display_name || c.username || rawHandle || "Creator";
               const initial = displayName.charAt(0).toUpperCase();
               return (
                 <Link
                   key={c.id}
                   href={`/u/${rawHandle}`}
-                  className="card p-4 hover:border-white/20 hover:-translate-y-0.5 transition"
+                  className="flex items-center gap-3 p-4 rounded-2xl border transition hover:border-white/20"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--line) 70%, transparent)",
+                    background: "color-mix(in srgb, var(--midnight) 75%, transparent)",
+                  }}
                 >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-full border overflow-hidden flex-shrink-0 grid place-items-center text-white/70 font-semibold"
-                      style={{
-                        borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                        background: "color-mix(in srgb, var(--midnight) 85%, transparent)",
-                      }}
-                    >
-                      {c.avatar_url ? (
-                        <img src={c.avatar_url} alt={displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        initial
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="font-semibold truncate">{displayName}</div>
-                      <div className="text-xs truncate" style={{ color: "var(--muted)" }}>{displayHandle}</div>
-                    </div>
+                  <div
+                    className="w-11 h-11 rounded-full overflow-hidden flex-shrink-0 grid place-items-center font-semibold text-sm"
+                    style={{
+                      background: "color-mix(in srgb, var(--plum) 30%, var(--midnight))",
+                      color: "var(--gold)",
+                    }}
+                  >
+                    {c.avatar_url ? (
+                      <img src={c.avatar_url} alt={displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      initial
+                    )}
                   </div>
-                  {c.role || c.music_dna ? (
-                    <div className="mt-3 text-sm text-white/60 truncate">
-                      {c.role ? (
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-full border mr-2"
-                          style={{
-                            borderColor: "color-mix(in srgb, var(--gold) 50%, transparent)",
-                            color: "color-mix(in srgb, var(--gold) 90%, white)",
-                          }}
-                        >
-                          {c.role}
-                        </span>
-                      ) : null}
-                      {c.music_dna || ""}
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm text-white truncate">{displayName}</div>
+                    <div className="text-xs truncate" style={{ color: "var(--muted)" }}>
+                      @{rawHandle}
                     </div>
-                  ) : null}
+                    {c.role && (
+                      <span
+                        className="text-[10px] px-2 py-0.5 rounded-full mt-1 inline-block"
+                        style={{
+                          background: "color-mix(in srgb, var(--gold) 12%, transparent)",
+                          color: "var(--gold)",
+                          border: "1px solid color-mix(in srgb, var(--gold) 30%, transparent)",
+                        }}
+                      >
+                        {c.role}
+                      </span>
+                    )}
+                  </div>
                 </Link>
               );
             })}
@@ -453,7 +504,11 @@ export default async function HomePage() {
         </section>
       )}
 
-      {error ? <div className="mt-8 text-red-400">Error loading playlists: {String(error.message || error)}</div> : null}
+      {error && (
+        <div className="mt-8 text-red-400 text-sm">
+          Error loading playlists: {String(error.message || error)}
+        </div>
+      )}
     </div>
   );
 }
