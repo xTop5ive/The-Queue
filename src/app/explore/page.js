@@ -1,13 +1,10 @@
-// Top-level: Next.js client component
 "use client";
 
-// Imports: Next.js, React, Supabase
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
-// Supabase client helper
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -17,25 +14,16 @@ function getSupabase() {
   });
 }
 
-// Helper: value to string
-function toStr(v) {
-  if (!v) return "";
-  return Array.isArray(v) ? v[0] || "" : String(v);
-}
-
-// Helper: normalize tag
 function normTag(t) {
   return String(t || "").trim().toLowerCase();
 }
 
-// Helper: format user handle
 function fmtHandle(h) {
   const v = String(h || "").trim();
   if (!v) return "@user";
   return v.startsWith("@") ? v : `@${v}`;
 }
 
-// Helper: parse to number, or undefined
 function toNum(v) {
   const s = String(v ?? "").trim();
   if (!s) return undefined;
@@ -43,7 +31,6 @@ function toNum(v) {
   return Number.isFinite(n) ? n : undefined;
 }
 
-// Helper: build explore page URL with filters
 function buildExploreHref(opts) {
   const p = new URLSearchParams();
   const q = (opts.q || "").trim();
@@ -52,7 +39,6 @@ function buildExploreHref(opts) {
   if (q) p.set("q", q);
   if (tags.length) p.set("tags", Array.from(new Set(tags)).join(","));
   p.set("sort", sort);
-  // Optional DJ-style params (only included if provided)
   if (typeof opts.bpmMin === "number") p.set("bpmMin", String(opts.bpmMin));
   if (typeof opts.bpmMax === "number") p.set("bpmMax", String(opts.bpmMax));
   if (typeof opts.energyMin === "number") p.set("energyMin", String(opts.energyMin));
@@ -62,30 +48,25 @@ function buildExploreHref(opts) {
   return qs ? `/explore?${qs}` : "/explore";
 }
 
-// Main genre tags for quick filtering
 const QUICK_TAGS = ["r&b", "hip-hop", "pop", "afrobeats", "edm", "rock", "country", "latin"];
 
 export default function ExplorePage() {
-  // Next.js router and URL params
   const router = useRouter();
   const sp = useSearchParams();
   const supabase = useMemo(() => getSupabase(), []);
 
-  // URL params for search and filters
   const q = (sp?.get("q") || "").trim();
   const sort = sp?.get("sort") === "top" ? "top" : "new";
   const tagsParam = sp?.get("tags") || "";
   const tagNames = tagsParam ? tagsParam.split(",").map(normTag).filter(Boolean) : [];
   const selected = useMemo(() => new Set(tagNames), [tagsParam]);
 
-  // DJ-style filter params from URL
   const bpmMin = sp?.get("bpmMin");
   const bpmMax = sp?.get("bpmMax");
   const energyMin = sp?.get("energyMin");
-  const clean = sp?.get("clean"); // "1" or "0"
-  const key = sp?.get("key"); // string
+  const clean = sp?.get("clean");
+  const key = sp?.get("key");
 
-  // Local state for UI controls
   const [searchText, setSearchText] = useState(q);
   const [bpmMinText, setBpmMinText] = useState(bpmMin ?? "");
   const [bpmMaxText, setBpmMaxText] = useState(bpmMax ?? "");
@@ -93,21 +74,21 @@ export default function ExplorePage() {
   const [cleanOnly, setCleanOnly] = useState(clean === "1");
   const [energyMinVal, setEnergyMinVal] = useState(energyMin ? Number(energyMin) : 0);
 
-  // Autocomplete (predictions) for the Explore search bar
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
-  const [suggestItems, setSuggestItems] = useState([]); // { type: 'playlist'|'creator', label, value }
+  const [suggestItems, setSuggestItems] = useState([]);
   const [suggestActive, setSuggestActive] = useState(-1);
   const searchWrapRef = useRef(null);
 
-  // Playlist data and UI state
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
   const [handlesByUserId, setHandlesByUserId] = useState({});
   const [error, setError] = useState("");
   const [djWarning, setDjWarning] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Sync local state with URL params on change
+  const hasAdvanced = !!(bpmMin || bpmMax || energyMin || clean || key);
+
   useEffect(() => {
     setSearchText(q);
     setBpmMinText(bpmMin ?? "");
@@ -115,9 +96,9 @@ export default function ExplorePage() {
     setKeyText(key ?? "");
     setCleanOnly(clean === "1");
     setEnergyMinVal(energyMin ? Number(energyMin) : 0);
+    if (bpmMin || bpmMax || energyMin || clean || key) setShowAdvanced(true);
   }, [q, bpmMin, bpmMax, key, clean, energyMin]);
 
-  // Close autocomplete when clicking outside
   useEffect(() => {
     function onDocDown(e) {
       if (!searchWrapRef.current) return;
@@ -130,7 +111,6 @@ export default function ExplorePage() {
     return () => document.removeEventListener("mousedown", onDocDown);
   }, []);
 
-  // Fetch playlists and handles when filters change
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -138,11 +118,7 @@ export default function ExplorePage() {
       setError("");
       setDjWarning("");
       try {
-        // Base query for public playlists
         let query = supabase.from("playlists").select("*").eq("is_public", true);
-        // Search:
-        // - If query starts with @, treat it as a creator handle search (profiles -> user ids)
-        // - Otherwise search title/description
         if (q) {
           const term = q.trim();
           if (term.startsWith("@")) {
@@ -157,7 +133,6 @@ export default function ExplorePage() {
               if (ids.length) query = query.in("user_id", ids);
               else query = query.eq("user_id", "00000000-0000-0000-0000-000000000000");
             } catch {
-              // If profiles isn't available, fall back to title/description search
               const safe = raw;
               query = query.or(`title.ilike.%${safe}%,description.ilike.%${safe}%`);
             }
@@ -166,11 +141,9 @@ export default function ExplorePage() {
             query = query.or(`title.ilike.%${safe}%,description.ilike.%${safe}%`);
           }
         }
-        // Tags: require ALL selected tags
         if (tagNames.length) {
           query = query.contains("tags", tagNames);
         }
-        // DJ-style filters (optional)
         const applyDjFilters = (q2) => {
           const minBpm = toNum(bpmMin);
           const maxBpm = toNum(bpmMax);
@@ -184,7 +157,6 @@ export default function ExplorePage() {
           return q2;
         };
         query = applyDjFilters(query);
-        // Sort by likes or newest
         if (sort === "top") query = query.order("likes_count", { ascending: false });
         else query = query.order("created_at", { ascending: false });
         let data;
@@ -192,7 +164,6 @@ export default function ExplorePage() {
         const res1 = await query.limit(24);
         data = res1.data;
         qErr = res1.error;
-        // If DJ columns aren't in the schema yet, retry without DJ filters.
         if (qErr && /column|schema cache/i.test(qErr.message || "")) {
           let fallback = supabase.from("playlists").select("*").eq("is_public", true);
           if (q) {
@@ -201,10 +172,8 @@ export default function ExplorePage() {
               const raw = term.slice(1).replaceAll(",", " ");
               try {
                 const { data: profs } = await supabase
-                  .from("profiles")
-                  .select("id,handle,username")
-                  .or(`handle.ilike.%${raw}%,username.ilike.%${raw}%`)
-                  .limit(50);
+                  .from("profiles").select("id,handle,username")
+                  .or(`handle.ilike.%${raw}%,username.ilike.%${raw}%`).limit(50);
                 const ids = Array.from(new Set((profs || []).map((p) => p.id).filter(Boolean)));
                 if (ids.length) fallback = fallback.in("user_id", ids);
                 else fallback = fallback.eq("user_id", "00000000-0000-0000-0000-000000000000");
@@ -217,25 +186,20 @@ export default function ExplorePage() {
               fallback = fallback.or(`title.ilike.%${safe}%,description.ilike.%${safe}%`);
             }
           }
-          if (tagNames.length) {
-            fallback = fallback.contains("tags", tagNames);
-          }
+          if (tagNames.length) fallback = fallback.contains("tags", tagNames);
           if (sort === "top") fallback = fallback.order("likes_count", { ascending: false });
           else fallback = fallback.order("created_at", { ascending: false });
           const res2 = await fallback.limit(24);
           data = res2.data;
           qErr = res2.error;
-          // Only show warning if the fallback succeeds.
           if (!qErr && (bpmMin || bpmMax || energyMin || clean || key)) {
-            setDjWarning(
-              "DJ filters are on, but your database doesn’t have the DJ columns yet (avg_bpm, energy, clean, keys). Add them in Supabase to make these filters work."
-            );
+            setDjWarning("DJ filters need the avg_bpm, energy, clean, and keys columns in Supabase.");
           }
         }
         if (qErr) throw qErr;
         const mapped = (data || []).map((r) => ({
           ...r,
-          coverUrl: r.cover_url || "/placeholder-cover.png",
+          coverUrl: r.cover_url || "",
           createdAt: r.created_at,
           likes: r.likes_count ?? 0,
           userId: r.user_id,
@@ -247,23 +211,14 @@ export default function ExplorePage() {
         }));
         if (!alive) return;
         setRows(mapped);
-        // Load handles from profiles (best-effort)
         const userIds = Array.from(new Set(mapped.map((x) => x.userId).filter(Boolean)));
-        if (!userIds.length) {
-          setHandlesByUserId({});
-          return;
-        }
+        if (!userIds.length) { setHandlesByUserId({}); return; }
         try {
           const { data: profs, error: pErr } = await supabase
-            .from("profiles")
-            .select("id, handle, username")
-            .in("id", userIds);
+            .from("profiles").select("id, handle, username").in("id", userIds);
           if (pErr) throw pErr;
           const map = {};
-          for (const p of profs || []) {
-            const raw = p?.handle || p?.username || "";
-            map[p.id] = fmtHandle(raw);
-          }
+          for (const p of profs || []) { map[p.id] = fmtHandle(p?.handle || p?.username || ""); }
           if (alive) setHandlesByUserId(map);
         } catch {
           if (alive) setHandlesByUserId({});
@@ -277,75 +232,40 @@ export default function ExplorePage() {
         if (alive) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
-  // Add all filter dependencies so fetch updates on clear/filter
+    return () => { alive = false; };
   }, [supabase, q, tagsParam, sort, bpmMin, bpmMax, energyMin, clean, key]);
 
-  // Autocomplete suggestions (debounced)
   useEffect(() => {
     let alive = true;
     const term = (searchText || "").trim();
-
-    // If empty, clear suggestions
     if (!term) {
       setSuggestItems([]);
       setSuggestOpen(false);
       setSuggestActive(-1);
       return;
     }
-
     const t = setTimeout(async () => {
       try {
         setSuggestLoading(true);
-
-        // If user starts with @, prioritize creators
         const raw = term.startsWith("@") ? term.slice(1) : term;
         const safe = raw.replaceAll(",", " ");
-
-        // Playlists (title match)
         const plRes = await supabase
-          .from("playlists")
-          .select("id,title,user_id")
-          .eq("is_public", true)
-          .ilike("title", `%${safe}%`)
-          .order("created_at", { ascending: false })
-          .limit(6);
-
-        // Creator handles from profiles (best effort)
+          .from("playlists").select("id,title,user_id").eq("is_public", true)
+          .ilike("title", `%${safe}%`).order("created_at", { ascending: false }).limit(6);
         let creators = [];
         try {
           const prRes = await supabase
-            .from("profiles")
-            .select("id,handle,username")
-            .or(`handle.ilike.%${safe}%,username.ilike.%${safe}%`)
-            .limit(6);
-
-          creators = (prRes.data || [])
-            .map((p) => {
-              const h = (p.handle || p.username || "").trim();
-              if (!h) return null;
-              const hh = h.startsWith("@") ? h : `@${h}`;
-              return { type: "creator", label: hh, value: hh };
-            })
-            .filter(Boolean);
-        } catch {
-          creators = [];
-        }
-
-        const playlists = (plRes.data || []).map((r) => ({
-          type: "playlist",
-          label: r.title,
-          value: r.title,
-        }));
-
-        // If typing @, put creators first
-        const combined = term.startsWith("@")
-          ? [...creators, ...playlists]
-          : [...playlists, ...creators];
-
-        // De-dupe by label
+            .from("profiles").select("id,handle,username")
+            .or(`handle.ilike.%${safe}%,username.ilike.%${safe}%`).limit(6);
+          creators = (prRes.data || []).map((p) => {
+            const h = (p.handle || p.username || "").trim();
+            if (!h) return null;
+            const hh = h.startsWith("@") ? h : `@${h}`;
+            return { type: "creator", label: hh, value: hh };
+          }).filter(Boolean);
+        } catch { creators = []; }
+        const playlists = (plRes.data || []).map((r) => ({ type: "playlist", label: r.title, value: r.title }));
+        const combined = term.startsWith("@") ? [...creators, ...playlists] : [...playlists, ...creators];
         const seen = new Set();
         const deduped = [];
         for (const it of combined) {
@@ -355,7 +275,6 @@ export default function ExplorePage() {
           deduped.push(it);
           if (deduped.length >= 8) break;
         }
-
         if (!alive) return;
         setSuggestItems(deduped);
         setSuggestOpen(true);
@@ -369,11 +288,7 @@ export default function ExplorePage() {
         if (alive) setSuggestLoading(false);
       }
     }, 220);
-
-    return () => {
-      alive = false;
-      clearTimeout(t);
-    };
+    return () => { alive = false; clearTimeout(t); };
   }, [supabase, searchText]);
 
   function applySuggestion(item) {
@@ -381,12 +296,8 @@ export default function ExplorePage() {
     setSearchText(item.value);
     setSuggestOpen(false);
     setSuggestActive(-1);
-
-    // If it's a creator, keep the @ in the search box so the UI hint matches
-    // and let the user hit Search (or press Enter on the input).
   }
 
-  // Handler: submit search and filters
   function submitSearch(e) {
     e.preventDefault();
     const href = buildExploreHref({
@@ -402,7 +313,6 @@ export default function ExplorePage() {
     router.push(href);
   }
 
-  // Handler: clear all filters and reset UI state
   function clearAll() {
     setSearchText("");
     setBpmMinText("");
@@ -413,57 +323,62 @@ export default function ExplorePage() {
     setSuggestOpen(false);
     setSuggestItems([]);
     setSuggestActive(-1);
-    // Keep current sort, but remove all other params
     router.push(buildExploreHref({ sort }));
   }
 
-  // Links for sort pills
   const hrefNewest = buildExploreHref({ q, tags: tagNames, sort: "new" });
   const hrefTop = buildExploreHref({ q, tags: tagNames, sort: "top" });
+  const hasActiveFilters = !!(q || tagNames.length || bpmMin || bpmMax || energyMin || clean || key);
 
+  // ── JSX ──────────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-6xl mx-auto px-5 py-10">
-      {/* Header section */}
-      <div className="mb-8">
-        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
-          <span className="w-2 h-2 rounded-full" style={{ background: "var(--gold)" }} />
-          The Queue • Explore
-        </div>
 
-        <h1 className="mt-4 text-4xl font-semibold tracking-tight">Explore</h1>
-        <p className="text-white/60 mt-2 max-w-2xl">
-          Search by vibe, tags, or creator. Tap tags to filter. Switch to “Most liked” to see what’s trending.
+      {/* Header */}
+      <div className="mb-8">
+        <div
+          className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs mb-4"
+          style={{
+            background: "color-mix(in srgb, var(--gold) 10%, transparent)",
+            color: "var(--gold)",
+            border: "1px solid color-mix(in srgb, var(--gold) 25%, transparent)",
+          }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--gold)" }} />
+          The Queue &mdash; Explore
+        </div>
+        <h1 className="text-4xl font-semibold tracking-tight text-white">Explore</h1>
+        <p className="text-white/50 mt-2 max-w-xl">
+          Browse broad. Search by vibe, tag, or creator.
         </p>
       </div>
 
-      {/* Search and filter bar */}
-      <div className="card p-5 mb-7">
-        <form onSubmit={submitSearch}>
-          {/* Row 1: Search + Sort pills + Submit */}
-          <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-            <div ref={searchWrapRef} className="relative w-full lg:flex-1">
+      {/* Search + filters */}
+      <div
+        className="rounded-2xl border p-5 mb-8"
+        style={{
+          borderColor: "color-mix(in srgb, var(--line) 70%, transparent)",
+          background: "color-mix(in srgb, var(--midnight) 80%, transparent)",
+        }}
+      >
+        <form onSubmit={submitSearch} className="space-y-4">
+          {/* Search row */}
+          <div className="flex gap-3">
+            <div ref={searchWrapRef} className="relative flex-1">
               <input
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
                 onFocus={() => {
-                  const t = (searchText || "").trim();
-                  if (t && suggestItems.length) setSuggestOpen(true);
+                  if ((searchText || "").trim() && suggestItems.length) setSuggestOpen(true);
                 }}
                 onKeyDown={(e) => {
                   if (!suggestOpen || !suggestItems.length) return;
-
                   if (e.key === "ArrowDown") {
                     e.preventDefault();
-                    setSuggestActive((i) => {
-                      const next = Math.min((i < 0 ? -1 : i) + 1, suggestItems.length - 1);
-                      return next;
-                    });
+                    setSuggestActive((i) => Math.min((i < 0 ? -1 : i) + 1, suggestItems.length - 1));
                   } else if (e.key === "ArrowUp") {
                     e.preventDefault();
-                    setSuggestActive((i) => {
-                      const next = Math.max(i - 1, 0);
-                      return next;
-                    });
+                    setSuggestActive((i) => Math.max(i - 1, 0));
                   } else if (e.key === "Enter") {
                     if (suggestActive >= 0 && suggestActive < suggestItems.length) {
                       e.preventDefault();
@@ -475,258 +390,68 @@ export default function ExplorePage() {
                   }
                 }}
                 placeholder="Search title, description, or @handle"
-                className="w-full px-4 py-3 rounded-full border outline-none"
+                className="w-full px-4 py-2.5 rounded-xl border outline-none text-sm"
                 style={{
-                  background: "color-mix(in srgb, var(--midnight) 85%, transparent)",
+                  background: "color-mix(in srgb, var(--midnight) 90%, transparent)",
                   borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
                   color: "var(--fog)",
                 }}
-                aria-label="Search playlists"
                 autoComplete="off"
               />
 
-              {/* Predictions dropdown */}
+              {/* Autocomplete dropdown */}
               {suggestOpen && (suggestLoading || suggestItems.length) ? (
                 <div
                   className="absolute z-50 mt-2 w-full rounded-2xl border overflow-hidden"
                   style={{
-                    background: "color-mix(in srgb, var(--midnight) 96%, black)",
+                    background: "color-mix(in srgb, var(--midnight) 98%, black)",
                     borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
                     boxShadow: "0 18px 40px rgba(0,0,0,0.55)",
                   }}
-                  role="listbox"
-                  aria-label="Search suggestions"
                 >
-                  {suggestLoading ? (
-                    <div className="px-4 py-3 text-sm text-white/70">Searching…</div>
-                  ) : null}
-
-                  {!suggestLoading && !suggestItems.length ? (
-                    <div className="px-4 py-3 text-sm text-white/60">No suggestions.</div>
-                  ) : null}
-
-                  {!suggestLoading && suggestItems.length ? (
-                    <div>
-                      {suggestItems.map((it, idx) => (
-                        <button
-                          key={`${it.type}-${it.label}-${idx}`}
-                          type="button"
-                          onClick={() => applySuggestion(it)}
-                          onMouseEnter={() => setSuggestActive(idx)}
-                          className="w-full text-left px-4 py-3 text-sm"
-                          style={{
-                            background:
-                              idx === suggestActive
-                                ? "color-mix(in srgb, white 10%, transparent)"
-                                : "transparent",
-                            borderTop:
-                              idx === 0
-                                ? "none"
-                                : "1px solid color-mix(in srgb, var(--line) 55%, transparent)",
-                            color: "var(--fog)",
-                          }}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="truncate">
-                              {it.type === "creator" ? (
-                                <span className="text-white/90">{it.label}</span>
-                              ) : (
-                                <span className="text-white/90">{it.label}</span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-white/55 flex-shrink-0">
-                              {it.type === "creator" ? "Creator" : "Playlist"}
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
+                  {suggestLoading && <div className="px-4 py-3 text-sm text-white/50">Searching&hellip;</div>}
+                  {!suggestLoading && !suggestItems.length && (
+                    <div className="px-4 py-3 text-sm text-white/40">No suggestions.</div>
+                  )}
+                  {!suggestLoading && suggestItems.map((it, idx) => (
+                    <button
+                      key={`${it.type}-${it.label}-${idx}`}
+                      type="button"
+                      onClick={() => applySuggestion(it)}
+                      onMouseEnter={() => setSuggestActive(idx)}
+                      className="w-full text-left px-4 py-2.5 text-sm flex items-center justify-between gap-3"
+                      style={{
+                        background: idx === suggestActive ? "color-mix(in srgb, white 8%, transparent)" : "transparent",
+                        borderTop: idx === 0 ? "none" : "1px solid color-mix(in srgb, var(--line) 50%, transparent)",
+                        color: "var(--fog)",
+                      }}
+                    >
+                      <span className="truncate text-white/90">{it.label}</span>
+                      <span className="text-[11px] text-white/40 flex-shrink-0">
+                        {it.type === "creator" ? "Creator" : "Playlist"}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               ) : null}
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              <Link
-                href={hrefNewest}
-                className="px-4 py-2 rounded-full border text-sm"
-                style={{
-                  background:
-                    sort === "new"
-                      ? "color-mix(in srgb, var(--purple) 22%, transparent)"
-                      : "transparent",
-                  borderColor:
-                    sort === "new"
-                      ? "color-mix(in srgb, var(--purple) 40%, transparent)"
-                      : "color-mix(in srgb, var(--line) 80%, transparent)",
-                  color: "var(--fog)",
-                }}
-              >
-                Newest
-              </Link>
-
-              <Link
-                href={hrefTop}
-                className="px-4 py-2 rounded-full border text-sm"
-                style={{
-                  background:
-                    sort === "top"
-                      ? "color-mix(in srgb, var(--purple) 22%, transparent)"
-                      : "transparent",
-                  borderColor:
-                    sort === "top"
-                      ? "color-mix(in srgb, var(--purple) 40%, transparent)"
-                      : "color-mix(in srgb, var(--line) 80%, transparent)",
-                  color: "var(--fog)",
-                }}
-              >
-                Most liked
-              </Link>
-
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-full text-sm font-semibold"
-                style={{
-                  background: "color-mix(in srgb, var(--purple) 85%, black)",
-                  color: "white",
-                  border: "1px solid color-mix(in srgb, var(--purple) 50%, transparent)",
-                }}
-              >
-                Search
-              </button>
-            </div>
+            <button
+              type="submit"
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold flex-shrink-0 transition hover:opacity-90"
+              style={{
+                background: "color-mix(in srgb, var(--gold) 18%, transparent)",
+                color: "var(--gold)",
+                border: "1px solid color-mix(in srgb, var(--gold) 35%, transparent)",
+              }}
+            >
+              Search
+            </button>
           </div>
 
-          {/* Row 2: DJ filters bar */}
-          <div
-            className="mt-4 rounded-2xl border p-4"
-            style={{
-              borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-              background: "color-mix(in srgb, var(--midnight) 80%, transparent)",
-            }}
-          >
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-              <div className="md:col-span-3">
-                <div className="text-[11px] text-white/60 mb-1">BPM range</div>
-                <div className="flex gap-2">
-                  <input
-                    value={bpmMinText}
-                    onChange={(e) => setBpmMinText(e.target.value)}
-                    inputMode="numeric"
-                    placeholder="Min"
-                    className="w-full px-3 py-2 rounded-full border outline-none"
-                    style={{
-                      background: "transparent",
-                      borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                      color: "var(--fog)",
-                    }}
-                    aria-label="Minimum BPM"
-                  />
-                  <input
-                    value={bpmMaxText}
-                    onChange={(e) => setBpmMaxText(e.target.value)}
-                    inputMode="numeric"
-                    placeholder="Max"
-                    className="w-full px-3 py-2 rounded-full border outline-none"
-                    style={{
-                      background: "transparent",
-                      borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                      color: "var(--fog)",
-                    }}
-                    aria-label="Maximum BPM"
-                  />
-                </div>
-              </div>
-
-              <div className="md:col-span-3">
-                <div className="text-[11px] text-white/60 mb-1">Key (Camelot)</div>
-                <select
-                  value={keyText}
-                  onChange={(e) => setKeyText(e.target.value)}
-                  className="w-full px-3 py-2 rounded-full border outline-none"
-                  style={{
-                    background: "transparent",
-                    borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                    color: "var(--fog)",
-                  }}
-                  aria-label="Key"
-                >
-                  <option value="">Any</option>
-                  {[
-                    "1A",
-                    "2A",
-                    "3A",
-                    "4A",
-                    "5A",
-                    "6A",
-                    "7A",
-                    "8A",
-                    "9A",
-                    "10A",
-                    "11A",
-                    "12A",
-                    "1B",
-                    "2B",
-                    "3B",
-                    "4B",
-                    "5B",
-                    "6B",
-                    "7B",
-                    "8B",
-                    "9B",
-                    "10B",
-                    "11B",
-                    "12B",
-                  ].map((k) => (
-                    <option key={k} value={k}>
-                      {k}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="md:col-span-3">
-                <div className="text-[11px] text-white/60 mb-1">Version</div>
-                <label
-                  className="flex items-center gap-2 px-4 py-2 rounded-full border"
-                  style={{
-                    borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                    background: "transparent",
-                  }}
-                >
-                  <input type="checkbox" checked={cleanOnly} onChange={(e) => setCleanOnly(e.target.checked)} />
-                  <span className="text-sm text-white/80">Clean only</span>
-                </label>
-              </div>
-
-              <div className="md:col-span-3">
-                <div className="text-[11px] text-white/60 mb-1">Minimum energy</div>
-                <div
-                  className="px-4 py-2 rounded-full border"
-                  style={{
-                    borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                    background: "transparent",
-                  }}
-                >
-                  <input
-                    type="range"
-                    min={0}
-                    max={10}
-                    value={energyMinVal}
-                    onChange={(e) => setEnergyMinVal(Number(e.target.value))}
-                    className="w-full"
-                    aria-label="Minimum energy"
-                  />
-                  <div className="mt-1 text-[11px] text-white/60">{energyMinVal} / 10</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Show DJ warning if needed */}
-            {djWarning ? <div className="mt-3 text-xs text-yellow-200/90">{djWarning}</div> : null}
-
-            {/* Quick tags (8 main genres) and Clear button */}
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+          {/* Genre tags + advanced toggle */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex flex-wrap gap-2">
               {QUICK_TAGS.map((t) => {
                 const isOn = selected.has(t);
                 const next = isOn ? tagNames.filter((x) => x !== t) : Array.from(new Set([...tagNames, t]));
@@ -735,190 +460,347 @@ export default function ExplorePage() {
                   <Link
                     key={t}
                     href={href}
-                    className="px-3 py-1 rounded-full border text-sm"
+                    className="px-3 py-1 rounded-full text-xs font-medium transition"
                     style={{
                       background: isOn
-                        ? "color-mix(in srgb, var(--purple) 18%, transparent)"
-                        : "color-mix(in srgb, white 8%, transparent)",
-                      borderColor: isOn
-                        ? "color-mix(in srgb, var(--purple) 40%, transparent)"
-                        : "color-mix(in srgb, var(--line) 80%, transparent)",
-                      color: "var(--fog)",
+                        ? "color-mix(in srgb, var(--plum) 25%, transparent)"
+                        : "color-mix(in srgb, var(--line) 30%, transparent)",
+                      color: isOn
+                        ? "color-mix(in srgb, var(--plum) 90%, white)"
+                        : "var(--muted)",
+                      border: `1px solid ${isOn
+                        ? "color-mix(in srgb, var(--plum) 40%, transparent)"
+                        : "color-mix(in srgb, var(--line) 60%, transparent)"}`,
                     }}
                   >
                     #{t}
                   </Link>
                 );
               })}
-              {(q || tagNames.length || bpmMin || bpmMax || energyMin || clean || key) && (
-                <button
-                  type="button"
-                  onClick={clearAll}
-                  className="text-sm underline"
-                  style={{ color: "color-mix(in srgb, var(--fog) 70%, transparent)" }}
-                >
-                  Clear
-                </button>
-              )}
             </div>
 
-            {/* Active filters display */}
-            {tagNames.length > 0 && (
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-white/60">Active:</span>
-                {Array.from(new Set(tagNames)).map((t) => {
-                  const remaining = tagNames.filter((x) => x !== t);
-                  const href = buildExploreHref({ q, tags: remaining, sort });
-                  return (
-                    <Link
-                      key={t}
-                      href={href}
-                      className="rounded-full px-3 py-1 border"
-                      style={{
-                        background: "color-mix(in srgb, white 8%, transparent)",
-                        borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                        color: "var(--fog)",
-                      }}
-                    >
-                      #{t} ✕
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((v) => !v)}
+              className="text-xs flex items-center gap-1.5 transition hover:text-white flex-shrink-0"
+              style={{ color: hasAdvanced ? "var(--gold)" : "var(--muted)" }}
+            >
+              {hasAdvanced && <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--gold)" }} />}
+              Advanced
+              <span style={{ opacity: 0.6 }}>{showAdvanced ? "▲" : "▼"}</span>
+            </button>
           </div>
+
+          {/* Advanced DJ filters (collapsible) */}
+          {showAdvanced && (
+            <div
+              className="rounded-xl border p-4 grid grid-cols-1 md:grid-cols-4 gap-4"
+              style={{ borderColor: "color-mix(in srgb, var(--line) 60%, transparent)" }}
+            >
+              <div>
+                <div className="text-[11px] mb-1.5" style={{ color: "var(--muted)" }}>BPM range</div>
+                <div className="flex gap-2">
+                  <input
+                    value={bpmMinText}
+                    onChange={(e) => setBpmMinText(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="Min"
+                    className="w-full px-3 py-2 rounded-lg border outline-none text-sm"
+                    style={{ background: "transparent", borderColor: "color-mix(in srgb, var(--line) 80%, transparent)", color: "var(--fog)" }}
+                  />
+                  <input
+                    value={bpmMaxText}
+                    onChange={(e) => setBpmMaxText(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="Max"
+                    className="w-full px-3 py-2 rounded-lg border outline-none text-sm"
+                    style={{ background: "transparent", borderColor: "color-mix(in srgb, var(--line) 80%, transparent)", color: "var(--fog)" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[11px] mb-1.5" style={{ color: "var(--muted)" }}>Key (Camelot)</div>
+                <select
+                  value={keyText}
+                  onChange={(e) => setKeyText(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border outline-none text-sm"
+                  style={{ background: "color-mix(in srgb, var(--midnight) 90%, transparent)", borderColor: "color-mix(in srgb, var(--line) 80%, transparent)", color: "var(--fog)" }}
+                >
+                  <option value="">Any</option>
+                  {["1A","2A","3A","4A","5A","6A","7A","8A","9A","10A","11A","12A",
+                    "1B","2B","3B","4B","5B","6B","7B","8B","9B","10B","11B","12B"].map((k) => (
+                    <option key={k} value={k}>{k}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="text-[11px] mb-1.5" style={{ color: "var(--muted)" }}>
+                  Min energy &mdash; {energyMinVal}/10
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={10}
+                  value={energyMinVal}
+                  onChange={(e) => setEnergyMinVal(Number(e.target.value))}
+                  className="w-full mt-1"
+                />
+              </div>
+
+              <div>
+                <div className="text-[11px] mb-1.5" style={{ color: "var(--muted)" }}>Version</div>
+                <label
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer"
+                  style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                >
+                  <input type="checkbox" checked={cleanOnly} onChange={(e) => setCleanOnly(e.target.checked)} />
+                  <span className="text-sm" style={{ color: "var(--fog)" }}>Clean only</span>
+                </label>
+              </div>
+
+              {djWarning && (
+                <div className="md:col-span-4 text-xs" style={{ color: "#fbbf24" }}>
+                  {djWarning}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Active tag filters */}
+          {tagNames.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs" style={{ color: "var(--muted)" }}>Active:</span>
+              {Array.from(new Set(tagNames)).map((t) => {
+                const remaining = tagNames.filter((x) => x !== t);
+                const href = buildExploreHref({ q, tags: remaining, sort });
+                return (
+                  <Link
+                    key={t}
+                    href={href}
+                    className="text-xs px-2.5 py-1 rounded-full transition hover:opacity-80"
+                    style={{
+                      background: "color-mix(in srgb, var(--plum) 20%, transparent)",
+                      color: "color-mix(in srgb, var(--plum) 90%, white)",
+                      border: "1px solid color-mix(in srgb, var(--plum) 35%, transparent)",
+                    }}
+                  >
+                    #{t} &times;
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </form>
       </div>
 
-      {/* Section header for results */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-xl font-semibold">Public playlists</h2>
-          <p className="text-white/60 text-sm mt-1">
-            {loading ? "Loading…" : `Showing ${rows.length} result${rows.length === 1 ? "" : "s"}`}
-          </p>
+      {/* Results header */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-4">
+          <div>
+            <span className="text-white font-semibold">
+              {loading ? "Loading\u2026" : `${rows.length} result${rows.length === 1 ? "" : "s"}`}
+            </span>
+            {!loading && (
+              <span className="text-sm ml-2" style={{ color: "var(--muted)" }}>
+                sorted by {sort === "top" ? "most liked" : "newest"}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <Link
+              href={hrefNewest}
+              className="px-3.5 py-1.5 rounded-full text-xs font-medium transition"
+              style={{
+                background: sort === "new" ? "color-mix(in srgb, var(--gold) 16%, transparent)" : "transparent",
+                color: sort === "new" ? "var(--gold)" : "var(--muted)",
+                border: `1px solid ${sort === "new" ? "color-mix(in srgb, var(--gold) 35%, transparent)" : "color-mix(in srgb, var(--line) 60%, transparent)"}`,
+              }}
+            >
+              Newest
+            </Link>
+            <Link
+              href={hrefTop}
+              className="px-3.5 py-1.5 rounded-full text-xs font-medium transition"
+              style={{
+                background: sort === "top" ? "color-mix(in srgb, var(--gold) 16%, transparent)" : "transparent",
+                color: sort === "top" ? "var(--gold)" : "var(--muted)",
+                border: `1px solid ${sort === "top" ? "color-mix(in srgb, var(--gold) 35%, transparent)" : "color-mix(in srgb, var(--line) 60%, transparent)"}`,
+              }}
+            >
+              Most liked
+            </Link>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearAll}
+                className="px-3.5 py-1.5 rounded-full text-xs transition hover:text-white"
+                style={{ color: "var(--muted)" }}
+              >
+                Clear all
+              </button>
+            )}
+          </div>
         </div>
 
         <Link
           href="/new"
-          className="px-4 py-2 rounded-full border text-sm font-semibold inline-flex items-center gap-2"
+          className="px-4 py-2 rounded-full text-sm font-medium transition hover:opacity-90 flex-shrink-0"
           style={{
-            background: "color-mix(in srgb, var(--purple) 85%, black)",
-            color: "white",
-            borderColor: "color-mix(in srgb, var(--purple) 50%, transparent)",
+            background: "color-mix(in srgb, var(--gold) 16%, transparent)",
+            color: "var(--gold)",
+            border: "1px solid color-mix(in srgb, var(--gold) 35%, transparent)",
           }}
         >
-          <span aria-hidden>+</span>
-          Create playlist
+          + Create playlist
         </Link>
       </div>
 
-      {/* Playlist results or empty/error states */}
+      {/* Results */}
       {error ? (
-        <div className="card p-6 text-red-300">{error}</div>
+        <div
+          className="rounded-2xl border px-6 py-8 text-sm"
+          style={{ borderColor: "color-mix(in srgb, #f87171 40%, transparent)", color: "#f87171" }}
+        >
+          {error}
+        </div>
       ) : loading ? (
-        <div className="card p-6 text-white/70">Loading playlists…</div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <div
+              key={i}
+              className="rounded-2xl border overflow-hidden animate-pulse"
+              style={{ borderColor: "color-mix(in srgb, var(--line) 50%, transparent)" }}
+            >
+              <div className="aspect-video w-full" style={{ background: "color-mix(in srgb, var(--line) 30%, transparent)" }} />
+              <div className="p-3 space-y-2">
+                <div className="h-3.5 w-3/4 rounded" style={{ background: "color-mix(in srgb, var(--line) 35%, transparent)" }} />
+                <div className="h-3 w-1/2 rounded" style={{ background: "color-mix(in srgb, var(--line) 25%, transparent)" }} />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : rows.length ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {rows.map((p) => {
             const handle = handlesByUserId[p.userId] || "@user";
-
+            const rawHandle = handle.replace(/^@/, "");
             return (
-              <div key={p.id} className="card p-4 transition hover:-translate-y-0.5 hover:border-white/20">
-                <div className="flex gap-3">
-                  {/* Cover link only (no nested link issues) */}
-                  <Link
-                    href={`/p/${p.id}`}
-                    className="relative w-16 h-16 rounded-xl overflow-hidden border border-white/10 bg-white/5 flex-shrink-0"
-                    aria-label={`Open ${p.title}`}
-                  >
+              <div
+                key={p.id}
+                className="group rounded-2xl border overflow-hidden flex flex-col transition hover:border-white/20"
+                style={{
+                  borderColor: "color-mix(in srgb, var(--line) 70%, transparent)",
+                  background: "color-mix(in srgb, var(--midnight) 75%, transparent)",
+                }}
+              >
+                {/* Cover */}
+                <Link href={`/p/${p.id}`} className="block relative flex-shrink-0" style={{ aspectRatio: "16/9" }}>
+                  {p.coverUrl ? (
                     <img
                       src={p.coverUrl}
-                      alt=""
-                      className="w-full h-full object-cover"
+                      alt={p.title}
+                      className="w-full h-full object-cover transition group-hover:brightness-90"
                       loading="lazy"
                       referrerPolicy="no-referrer"
                     />
-                  </Link>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <Link href={`/p/${p.id}`} className="font-semibold truncate block hover:underline">
-                          {p.title}
-                        </Link>
-
-                        {p.description ? (
-                          <div className="text-sm text-white/60 line-clamp-2">{p.description}</div>
-                        ) : (
-                          <div className="text-sm text-white/40">No description yet.</div>
-                        )}
-
-                        <div className="text-xs mt-1" style={{ color: "var(--fog)" }}>
-                          by{" "}
-                          <Link
-                            href={`/u/${handle.replace(/^@/, "")}`}
-                            style={{ color: "var(--gold)" }}
-                            className="hover:underline"
-                          >
-                            {handle}
-                          </Link>
-                        </div>
-                      </div>
-
-                      <div className="text-sm text-white/70 flex items-center gap-1 flex-shrink-0" aria-label={`${p.likes} likes`}>
-                        <span aria-hidden>♥</span>
-                        <span>{p.likes}</span>
-                      </div>
+                  ) : (
+                    <div
+                      className="w-full h-full flex items-center justify-center text-4xl"
+                      style={{ background: "color-mix(in srgb, var(--plum) 18%, var(--midnight))" }}
+                    >
+                      &#9835;
                     </div>
+                  )}
+                  <div
+                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+                    style={{ background: "rgba(0,0,0,0.4)" }}
+                  >
+                    <div
+                      className="w-11 h-11 rounded-full flex items-center justify-center"
+                      style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)" }}
+                    >
+                      <span className="text-white text-lg pl-0.5">&#9654;</span>
+                    </div>
+                  </div>
+                </Link>
 
-                    {/* Tags are clickable and safe (no nested <a>) */}
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {(p.tags || []).slice(0, 6).map((t) => {
+                {/* Info */}
+                <div className="p-3 flex flex-col gap-1.5 flex-1">
+                  <Link
+                    href={`/p/${p.id}`}
+                    className="font-semibold text-sm text-white hover:underline line-clamp-1"
+                  >
+                    {p.title}
+                  </Link>
+                  <div className="flex items-center justify-between">
+                    <Link
+                      href={`/u/${rawHandle}`}
+                      className="text-xs hover:underline truncate"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      @{rawHandle}
+                    </Link>
+                    <span className="text-xs flex-shrink-0 ml-2" style={{ color: "var(--muted)" }}>
+                      &#9829; {p.likes}
+                    </span>
+                  </div>
+                  {(p.tags || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {(p.tags || []).slice(0, 4).map((t) => {
                         const tag = normTag(t);
                         const isOn = selected.has(tag);
                         const next = isOn ? tagNames.filter((x) => x !== tag) : Array.from(new Set([...tagNames, tag]));
                         const href = buildExploreHref({ q, tags: next, sort });
-
                         return (
                           <Link
                             key={`${p.id}-${t}`}
                             href={href}
-                            className={
-                              isOn
-                                ? "text-xs px-2.5 py-1 rounded-full bg-white/15 border border-white/20 text-white/90"
-                                : "text-xs px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-white/80 hover:bg-white/15"
-                            }
+                            className="text-[10px] px-2 py-0.5 rounded-full transition hover:opacity-80"
+                            style={{
+                              background: isOn
+                                ? "color-mix(in srgb, var(--plum) 30%, transparent)"
+                                : "color-mix(in srgb, var(--plum) 18%, transparent)",
+                              color: "color-mix(in srgb, var(--plum) 85%, white)",
+                              border: `1px solid ${isOn
+                                ? "color-mix(in srgb, var(--plum) 50%, transparent)"
+                                : "color-mix(in srgb, var(--plum) 28%, transparent)"}`,
+                            }}
                           >
                             #{t}
                           </Link>
                         );
                       })}
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
       ) : (
-        <div className="card p-8 mt-6">
-          <h3 className="text-lg font-semibold">No matches</h3>
-          <p className="text-white/60 mt-1">Try clearing filters, searching a different vibe, or selecting fewer tags.</p>
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={clearAll}
-              className="px-5 py-2 rounded-full text-sm font-semibold inline-flex items-center gap-2"
-              style={{
-                background: "color-mix(in srgb, var(--purple) 85%, black)",
-                color: "white",
-                border: "1px solid color-mix(in srgb, var(--purple) 50%, transparent)",
-              }}
-            >
-              Reset Explore
-            </button>
-          </div>
+        <div
+          className="rounded-2xl border px-8 py-14 text-center"
+          style={{ borderColor: "color-mix(in srgb, var(--line) 50%, transparent)" }}
+        >
+          <div className="text-3xl mb-3 text-white/20">&#9835;</div>
+          <div className="text-white font-semibold mb-1">No matches found</div>
+          <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
+            Try clearing filters, searching a different vibe, or selecting fewer tags.
+          </p>
+          <button
+            type="button"
+            onClick={clearAll}
+            className="px-5 py-2 rounded-full text-sm font-medium transition hover:opacity-90"
+            style={{
+              background: "color-mix(in srgb, var(--gold) 16%, transparent)",
+              color: "var(--gold)",
+              border: "1px solid color-mix(in srgb, var(--gold) 35%, transparent)",
+            }}
+          >
+            Clear all filters
+          </button>
         </div>
       )}
     </div>

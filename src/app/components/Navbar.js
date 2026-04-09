@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { MdSearch, MdClose } from "react-icons/md";
 import { FaAngleRight } from "react-icons/fa";
 import { FaAngleDown, FaFaceFrown } from "react-icons/fa6";
-import { FaUserCircle, FaCompass } from "react-icons/fa";
+import { FaCompass } from "react-icons/fa";
 import { motion } from "framer-motion";
 import { useClickOutside } from "@mantine/hooks";
 import { createBrowserClient } from "@/lib/supabase-browser";
@@ -256,7 +256,7 @@ const Navbar = () => {
                 <>
                   {searchedUsers.length > 0 && (
                     <>
-                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#888", padding: "6px 12px 2px", textTransform: "uppercase" }}>People</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "var(--muted)", padding: "6px 12px 2px", textTransform: "uppercase" }}>People</div>
                       {searchedUsers.map((u) => (
                         <div
                           key={u.id}
@@ -279,7 +279,7 @@ const Navbar = () => {
                           </div>
                           <div style={{ display: "flex", flexDirection: "column" }}>
                             <h3 style={{ margin: 0 }}>{u.displayName || `@${u.handle}`}</h3>
-                            <span style={{ fontSize: 12, opacity: 0.7, color: "#111" }}>
+                            <span style={{ fontSize: 12, color: "var(--muted)" }}>
                               @{u.handle}{u.role ? ` • ${u.role}` : ""}
                             </span>
                           </div>
@@ -289,7 +289,7 @@ const Navbar = () => {
                   )}
                   {searchedPlaylists.length > 0 && (
                     <>
-                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#888", padding: "6px 12px 2px", textTransform: "uppercase" }}>Playlists</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "var(--muted)", padding: "6px 12px 2px", textTransform: "uppercase" }}>Playlists</div>
                       {searchedPlaylists.map((p) => (
                         <div
                           key={p.id}
@@ -312,7 +312,7 @@ const Navbar = () => {
                           </div>
                           <div style={{ display: "flex", flexDirection: "column" }}>
                             <h3 style={{ margin: 0 }}>{p.title}</h3>
-                            <span style={{ fontSize: 12, opacity: 0.9, color: "#111" }}>
+                            <span style={{ fontSize: 12, color: "var(--muted)" }}>
                               by @{p.handle}
                             </span>
                           </div>
@@ -366,7 +366,6 @@ const Navbar = () => {
                 right: 16,
                 zIndex: 1000001,
                 pointerEvents: ProfileMenu ? "auto" : "none",
-                color: "#111",
               }}
               initial={{ y: 10, opacity: 0 }}
               animate={{
@@ -384,7 +383,7 @@ const Navbar = () => {
                   >
                     <img src={currentUser.profilePic} alt="User Profile Pic" />
                     <div className="profileData">
-                      <div className="name" style={{ color: "#111" }}>{currentUser.name}</div>
+                      <div className="name" style={{ color: "var(--fog)" }}>{currentUser.name}</div>
                       <span className="seeProfile">See Profile</span>
                     </div>
                   </Link>
@@ -396,7 +395,7 @@ const Navbar = () => {
                     >
                       <div className="leftSide">
                         <span className="icon">🎵</span>
-                        <span className="name" style={{ color: "#111" }}>My Playlists</span>
+                        <span className="name" style={{ color: "var(--fog)" }}>My Playlists</span>
                       </div>
                       <span className="actionIcon">
                         <FaAngleRight />
@@ -409,7 +408,7 @@ const Navbar = () => {
                     >
                       <div className="leftSide">
                         <span className="icon">📡</span>
-                        <span className="name" style={{ color: "#111" }}>Feed</span>
+                        <span className="name" style={{ color: "var(--fog)" }}>Feed</span>
                       </div>
                       <span className="actionIcon">
                         <FaAngleRight />
@@ -422,7 +421,7 @@ const Navbar = () => {
                     >
                       <div className="leftSide">
                         <span className="icon">♥</span>
-                        <span className="name" style={{ color: "#111" }}>Liked</span>
+                        <span className="name" style={{ color: "var(--fog)" }}>Liked</span>
                       </div>
                       <span className="actionIcon">
                         <FaAngleRight />
@@ -435,7 +434,7 @@ const Navbar = () => {
                     >
                       <div className="leftSide">
                         <span className="icon">⚙️</span>
-                        <span className="name" style={{ color: "#111" }}>Settings</span>
+                        <span className="name" style={{ color: "var(--fog)" }}>Settings</span>
                       </div>
                       <span className="actionIcon">
                         <FaAngleRight />
@@ -448,7 +447,7 @@ const Navbar = () => {
                     >
                       <div className="leftSide">
                         <span className="icon">🎵</span>
-                        <span className="name" style={{ color: "#111" }}>Communities</span>
+                        <span className="name" style={{ color: "var(--fog)" }}>Communities</span>
                       </div>
                       <span className="actionIcon">
                         <FaAngleRight />
@@ -463,7 +462,7 @@ const Navbar = () => {
                         <span className="icon">
                           <FaCompass />
                         </span>
-                        <span className="name" style={{ color: "#111" }}>Explore</span>
+                        <span className="name" style={{ color: "var(--fog)" }}>Explore</span>
                       </div>
                       <span className="actionIcon">
                         <FaAngleRight />
@@ -483,7 +482,7 @@ const Navbar = () => {
                     >
                       <div className="leftSide">
                         <span className="icon">⎋</span>
-                        <span className="name" style={{ color: "#111" }}>Log out</span>
+                        <span className="name" style={{ color: "var(--fog)" }}>Log out</span>
                       </div>
                       <span className="actionIcon">
                         <FaAngleRight />
@@ -590,7 +589,7 @@ const Navbar = () => {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   <h3 style={{ margin: 0 }}>{p.title}</h3>
-                  <span style={{ fontSize: 12, opacity: 0.9, color: "#111" }}>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>
                     by {p.handle?.startsWith("@") ? p.handle : `@${p.handle}`}
                   </span>
                 </div>

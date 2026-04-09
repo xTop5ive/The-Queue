@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* --------------------------- The Queue (Luxury Club) Palette --------------------------- */
+/* ── The Queue — Luxury Club Palette ─────────────────────────────────────── */
 :root {
   --ink: #0b0f1a;
   --midnight: #121826;
@@ -13,7 +13,7 @@
   --gold: #d4af37;
 }
 
-/* Optional helpers you can reuse in JSX with className */
+/* ── Utility classes ─────────────────────────────────────────────────────── */
 .card {
   @apply rounded-xl border;
   background: var(--midnight);
@@ -24,30 +24,28 @@
   @apply text-white font-semibold;
   background: var(--plum);
 }
-
 .btnPrimary:hover {
   filter: brightness(1.05);
 }
 
-/* ------------------------------------------------------------------------------------ */
-
-::-webkit-scrollbar {
-  @apply w-[6px] h-[6px];
-}
-
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { @apply w-[6px] h-[6px]; }
 ::-webkit-scrollbar-thumb {
   @apply rounded-full;
   background: color-mix(in srgb, var(--line) 70%, transparent);
 }
 
+/* ── Body ────────────────────────────────────────────────────────────────── */
 body {
   @apply min-h-screen;
-  background: radial-gradient(1200px 600px at 15% 0%, color-mix(in srgb, var(--plum) 22%, transparent), transparent 60%),
+  background:
+    radial-gradient(1200px 600px at 15% 0%, color-mix(in srgb, var(--plum) 22%, transparent), transparent 60%),
     radial-gradient(900px 500px at 90% 10%, color-mix(in srgb, var(--gold) 14%, transparent), transparent 55%),
     var(--ink);
   color: var(--fog);
 }
 
+/* ── Navbar ──────────────────────────────────────────────────────────────── */
 .inNavbar {
   @apply w-full h-[4rem] flex justify-between items-center px-4;
   background: color-mix(in srgb, var(--midnight) 92%, transparent);
@@ -59,26 +57,12 @@ body {
   @apply text-2xl font-semibold cursor-pointer transition-colors duration-300;
   color: var(--fog);
 }
+.inNavbar .inLogo:hover { color: var(--gold); }
 
-.inNavbar .inLogo:hover {
-  color: var(--gold);
-}
-
+/* ── Navbar search ───────────────────────────────────────────────────────── */
 .inSearch {
   width: calc(100% - 50%);
   @apply max-w-[35rem] hidden sm:block relative;
-}
-
-.searchResult {
-  @apply w-full absolute left-0 top-[3.5rem] shadow-xl rounded-xl bg-white z-[99999] py-4;
-}
-
-.searchResult .searchResultItem {
-  @apply py-2 flex items-center hover:bg-gray-100 cursor-pointer;
-}
-
-.searchResult .searchResultItem h3 {
-  @apply text-lg font-medium text-gray-600;
 }
 
 .inSearchWrapper {
@@ -86,131 +70,141 @@ body {
   background: color-mix(in srgb, var(--midnight) 90%, transparent);
   border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
 }
-
 .inSearch.inSearchFocused .inSearchWrapper {
   border-color: color-mix(in srgb, var(--plum) 55%, var(--line));
 }
 
-.inSearchWrapper .inIcon {
-  @apply text-xl mx-1;
-}
+.inSearchWrapper .inIcon { @apply text-xl mx-1; }
+.inSearch.inSearchFocused .inSearchIcon svg { color: var(--muted); }
 
-.inSearch.inSearchFocused .inSearchIcon svg {
-  @apply text-gray-600;
-}
-
-.inSearchCloseBtn {
-  @apply hidden cursor-pointer;
-}
-
-.inSearchCloseBtn svg {
-  @apply cursor-pointer hover:text-primary;
-}
-
-.inSearchCloseBtn.inSearchCloseBtnActive {
-  @apply block;
-}
+.inSearchCloseBtn { @apply hidden cursor-pointer; }
+.inSearchCloseBtn svg { @apply cursor-pointer; color: var(--muted); }
+.inSearchCloseBtn svg:hover { color: var(--gold); }
+.inSearchCloseBtn.inSearchCloseBtnActive { @apply block; }
 
 .inSearchWrapper input {
   @apply bg-transparent focus:outline-none w-full h-full;
   color: var(--fog);
 }
-
 .inSearchWrapper input::placeholder {
   color: color-mix(in srgb, var(--muted) 85%, transparent);
 }
 
-.inIcon {
-  color: var(--muted);
+.inIcon { color: var(--muted); }
+
+/* ── Search result dropdown (dark) ──────────────────────────────────────── */
+.searchResult {
+  @apply w-full absolute left-0 top-[3.5rem] rounded-2xl z-[99999] py-2 overflow-hidden border;
+  background: color-mix(in srgb, var(--midnight) 98%, black);
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
 }
 
+.searchResult .searchResultItem {
+  @apply flex items-center cursor-pointer px-3 py-2 transition-colors;
+  border-top: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
+}
+.searchResult .searchResultItem:first-child { border-top: none; }
+.searchResult .searchResultItem:hover {
+  background: color-mix(in srgb, white 6%, transparent);
+}
+
+.searchResult .searchResultItem h3 {
+  @apply text-sm font-medium;
+  color: var(--fog);
+}
+
+/* ── Navbar CTA button ───────────────────────────────────────────────────── */
 .inBtn {
   @apply px-6 py-2 cursor-pointer rounded-full text-white transition-all duration-300 focus-visible:outline-none focus-visible:ring-2;
   background: var(--plum);
   box-shadow: 0 10px 30px -18px color-mix(in srgb, var(--plum) 70%, transparent);
 }
-
-.inBtn:hover {
-  filter: brightness(1.06);
-}
-
+.inBtn:hover { filter: brightness(1.06); }
 .inBtn:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--plum) 70%, transparent);
   outline-offset: 2px;
 }
 
-.inNavRightOptions {
-  @apply flex items-center;
-}
+.inNavRightOptions { @apply flex items-center; }
+.inNavRightOptions .inBtn { @apply hidden sm:block; }
 
-.userProfile {
-  @apply relative;
+/* ── Mobile search button ────────────────────────────────────────────────── */
+.mobileSearchBtn {
+  @apply h-[2.5rem] w-[2.5rem] cursor-pointer sm:hidden rounded-full grid place-items-center text-[1.5rem];
+  background: color-mix(in srgb, var(--line) 60%, transparent);
+  color: var(--muted);
 }
+.mobileSearchBtn:hover { color: var(--fog); }
 
-.userProfile .userProfileDropdown {
-  @apply absolute top-[3.5rem] right-0 shadow-xl shadow-gray-200 bg-white rounded-xl overflow-hidden sm:w-[20rem] w-[290px];
-}
-
-.profileWrapper {
-  --tw-shadow: 0 0px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1) !important;
-  @apply flex items-center m-3 rounded-lg py-2 shadow-lg;
-}
-
-.profileWrapper .profileData {
-  @apply text-gray-800 flex flex-col;
-}
-
-.profileWrapper .profileData .name {
-  @apply font-semibold;
-}
-
-.profileWrapper .profileData span {
-  @apply text-[.7rem] cursor-pointer hover:text-primary;
-}
+/* ── Profile avatar ──────────────────────────────────────────────────────── */
+.userProfile { @apply relative; }
 
 .userImage img,
 .profileWrapper img {
   @apply rounded-full w-10 h-10 mx-4 cursor-pointer object-cover;
 }
 
-.linksWrapper {
-  @apply my-4;
+/* ── Profile dropdown (dark) ─────────────────────────────────────────────── */
+.userProfile .userProfileDropdown {
+  @apply absolute top-[3.5rem] right-0 rounded-2xl overflow-hidden sm:w-[20rem] w-[290px] border;
+  background: color-mix(in srgb, var(--midnight) 97%, black);
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
 }
+
+.profileWrapper {
+  @apply flex items-center m-3 rounded-xl py-2 px-1;
+  background: color-mix(in srgb, var(--line) 30%, transparent);
+}
+
+.profileWrapper .profileData {
+  @apply flex flex-col;
+  color: var(--fog);
+}
+.profileWrapper .profileData .name { @apply font-semibold text-sm; }
+.profileWrapper .profileData span {
+  @apply text-[.7rem] cursor-pointer;
+  color: var(--muted);
+}
+.profileWrapper .profileData span:hover { color: var(--gold); }
+
+.linksWrapper { @apply my-2; }
 
 .linksWrapper .link {
-  @apply flex items-center justify-between py-2 mx-2 hover:bg-gray-100 rounded-lg cursor-pointer;
+  @apply flex items-center justify-between py-2.5 mx-2 rounded-xl cursor-pointer transition-colors;
+}
+.linksWrapper .link:hover {
+  background: color-mix(in srgb, white 6%, transparent);
 }
 
-.linksWrapper .link .leftSide {
-  @apply flex items-center;
-}
+.linksWrapper .link .leftSide { @apply flex items-center; }
 
 .linksWrapper .link .leftSide .icon {
-  @apply mx-3 mr-2 bg-gray-300 p-2 text-[1.5rem] rounded-full;
+  @apply mx-3 mr-2 p-2 rounded-full text-[1.1rem];
+  background: color-mix(in srgb, var(--line) 60%, transparent);
+  color: var(--gold);
+}
+
+.linksWrapper .link .leftSide .name {
+  @apply text-sm font-medium;
+  color: var(--fog);
 }
 
 .linksWrapper .link .actionIcon {
-  @apply mx-2 text-xl;
+  @apply mx-2 text-sm;
+  color: color-mix(in srgb, var(--muted) 60%, transparent);
 }
 
-.linksWrapper .link .icon,
-.linksWrapper .link .actionIcon {
-  @apply text-gray-600 text-lg;
-}
+/* ── "No results" state ──────────────────────────────────────────────────── */
+.noUserFound { @apply flex justify-center items-center flex-col py-6; }
+.noUserFound svg { @apply text-[3rem]; color: color-mix(in srgb, var(--muted) 50%, transparent); }
+.noUserFound h3 { @apply text-sm mt-2; color: var(--muted); }
 
-.inNavRightOptions .inBtn {
-  @apply hidden sm:block;
-}
-
-.mobileSearchBtn {
-  @apply h-[2.5rem] w-[2.5rem] bg-gray-200 text-gray-800 cursor-pointer sm:hidden rounded-full grid place-items-center text-[1.5rem];
-}
-
+/* ── Left sidebar ────────────────────────────────────────────────────────── */
 .mainContainer {
   @apply flex justify-between w-full mt-6 3xl:max-w-[60%] 3xl:mx-auto;
 }
-
-/* --------------------------- Left Section --------------------------- */
 
 .leftSection {
   @apply mx-3 ml-5 w-full max-w-[15rem] min-w-[15rem] hidden mobile:block overflow-y-auto max-h-screen sticky top-[1rem];
@@ -222,9 +216,7 @@ body {
   border-color: color-mix(in srgb, var(--line) 80%, transparent);
 }
 
-.leftSection .userProfileWidget img {
-  @apply w-[3rem];
-}
+.leftSection .userProfileWidget img { @apply w-[3rem]; }
 
 .leftSection .userProfileWidget .userDetails,
 .rightSection .requestWidget .requestProfile .userDetails {
@@ -236,7 +228,6 @@ body {
   @apply text-base font-bold hover:cursor-pointer;
   color: var(--fog);
 }
-
 .leftSection .userProfileWidget .userDetails .name:hover,
 .rightSection .requestWidget .requestProfile .userDetails .name:hover {
   color: var(--gold);
@@ -248,9 +239,7 @@ body {
   color: var(--muted);
 }
 
-.profileImage img {
-  @apply rounded-full w-10;
-}
+.profileImage img { @apply rounded-full w-10; }
 
 .inSidebar {
   @apply mt-5 rounded-xl overflow-hidden border;
@@ -259,41 +248,31 @@ body {
 }
 
 .inSidebar .link {
-  @apply my-2 flex px-4 items-center py-3 hover:bg-gray-50 cursor-pointer;
+  @apply my-1 flex px-4 items-center py-3 cursor-pointer transition-colors;
+}
+.inSidebar .link:hover {
+  background: color-mix(in srgb, white 5%, transparent);
 }
 
 .inSidebar .link svg {
-  @apply mr-5 ml-1 text-xl text-gray-600;
+  @apply mr-5 ml-1 text-xl;
+  color: var(--muted);
 }
-
-.inSidebar .link:hover :is(svg, h3) {
-  color: var(--gold);
-}
-
 .inSidebar .link h3 {
-  @apply text-base text-gray-600 font-semibold;
+  @apply text-base font-semibold;
+  color: var(--muted);
 }
+.inSidebar .link:hover :is(svg, h3) { color: var(--gold); }
 
-.sidebarCreateBtn {
-  @apply grid place-items-center my-4 cursor-pointer;
-}
+.sidebarCreateBtn { @apply grid place-items-center my-4 cursor-pointer; }
 
-/* --------------------------- Left Section End --------------------------- */
-
-/* --------------------------- Right Section --------------------------- */
-
+/* ── Right section ───────────────────────────────────────────────────────── */
 .rightSection {
   @apply mx-5 w-full max-w-[16rem] hidden mobile:block xl:max-w-[20rem] min-w-[16rem] overflow-y-auto max-h-screen sticky top-[1rem];
 }
 
-.rightSection .requestWidget {
-  @apply bg-transparent w-full rounded-xl py-2;
-}
-
-.rightSection .requestWidget > h3 {
-  @apply my-1 font-semibold ml-3;
-  color: var(--fog);
-}
+.rightSection .requestWidget { @apply bg-transparent w-full rounded-xl py-2; }
+.rightSection .requestWidget > h3 { @apply my-1 font-semibold ml-3; color: var(--fog); }
 
 .rightSection .requestWidget .requestProfile {
   @apply my-3 scale-95 p-1 rounded-xl pt-5 border;
@@ -301,110 +280,16 @@ body {
   border-color: color-mix(in srgb, var(--line) 80%, transparent);
 }
 
-.rightSection .requestWidget .requestProfile .userDetails .name {
-  @apply !text-gray-600 !font-semibold;
-}
+.rightSection .requestWidget .requestProfile img { @apply w-[3rem] h-[3rem] rounded-full; }
+.rightSection .requestWidget .requestProfile .details { @apply flex ml-2; }
+.rightSection .requestWidget .requestProfile .actions { @apply flex justify-start my-3; }
 
-.rightSection .requestWidget .requestProfile img {
-  @apply w-[3rem] h-[3rem] rounded-full;
-}
-
-.rightSection .requestWidget .requestProfile .details {
-  @apply flex ml-2;
-}
-
-.rightSection .requestWidget .requestProfile .actions {
-  @apply flex justify-start my-3;
-}
-
-.rightSection .requestWidget .requestProfile .actions .actionBtn {
-  @apply mx-2 w-[6rem] text-sm first:bg-primary first:opacity-90 first:hover:opacity-100  first:text-white last:bg-gray-200 py-1.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-within:ring-offset-2 last:hover:bg-rose-600 last:hover:text-white;
-}
-
-/* --------------------------- Right Section End --------------------------- */
-
-/* --------------------------- Main Section --------------------------- */
-
+/* ── Main section ────────────────────────────────────────────────────────── */
 .mainSection {
   @apply w-full mobile:max-w-mainSection 0.5xl:max-w-[35rem] ml-2 !mx-auto;
 }
 
-.storiesWidget::-webkit-scrollbar {
-  @apply h-[0px];
-}
-
-.storiesWrapper {
-  @apply w-full flex justify-center items-center mx-auto;
-}
-
-.storiesWidget {
-  @apply w-full h-[8rem] px-2 py-2 flex overflow-x-auto mx-auto justify-start;
-}
-
-.storiesWidget .story {
-  @apply w-[5rem] min-w-[5rem] h-full cursor-pointer rounded-xl overflow-hidden relative mx-2;
-}
-
-.storiesWidget .story .overlay {
-  @apply h-full w-full absolute top-0 left-0 z-[1] bg-gradient-to-b to-[#1f2937ad] from-transparent;
-}
-
-.storiesWidget .story img {
-  @apply w-full h-full object-cover absolute;
-}
-
-.storiesWidget .story .profileImage {
-  @apply w-[1.5rem] h-[1.5rem] object-cover absolute top-[.4rem] left-[.4rem] rounded-full ring-2 ring-primary p-[.07rem];
-}
-
-.storiesWidget .story .name {
-  @apply w-full text-[.7rem] text-white absolute bottom-[.4rem] left-[.4rem] z-[1];
-}
-
-.createPlaylistWidget {
-  @apply h-auto my-3 mx-4 bg-white rounded-full relative;
-}
-
-.createPlaylistWidget.active {
-  @apply shadow-lg rounded-xl;
-}
-
-.createPlaylistWidget .otherOptions {
-  @apply hidden;
-}
-
-.createPlaylistWidget.active .otherOptions {
-  @apply flex justify-evenly flex-wrap;
-}
-
-.createPlaylistWidget.active .otherOptions .option {
-  @apply flex items-center my-4 cursor-pointer;
-}
-
-.createPlaylistWidget.active .otherOptions .option svg {
-  @apply mr-2 text-xl text-primary;
-}
-
-.createPlaylistWidget.active .otherOptions .option span {
-  @apply mr-2 text-sm hover:text-primary;
-}
-
-.createPlaylistWidget .createInput {
-  @apply w-full flex h-auto px-3 py-2 justify-between;
-}
-
-.createPlaylistWidget .createInput img {
-  @apply w-[2.5rem] h-[2.5rem] rounded-full;
-}
-
-.createPlaylistWidget .createInput input {
-  @apply bg-transparent h-auto w-full mx-2 focus:outline-none;
-}
-
-/* --------------------------- Main Section End --------------------------- */
-
-/* --------------------------- Playlist --------------------------- */
-
+/* ── Playlist card (legacy) ──────────────────────────────────────────────── */
 .PlaylistWrapper {
   @apply rounded-xl overflow-hidden mx-4 px-4 my-6 border;
   background: var(--midnight);
@@ -412,92 +297,35 @@ body {
   box-shadow: 0 20px 60px -45px rgba(0, 0, 0, 0.8);
 }
 
-.PlaylistWrapper .header {
-  @apply flex justify-between items-center my-3;
-}
+.PlaylistWrapper .header { @apply flex justify-between items-center my-3; }
+.PlaylistWrapper .header .left { @apply flex items-center; }
+.PlaylistWrapper .header .right .option > svg { @apply text-xl cursor-pointer; color: var(--muted); }
+.PlaylistWrapper .header .left .userDetails { @apply ml-3; }
+.PlaylistWrapper .header .left .userDetails .name { @apply font-semibold cursor-pointer; color: var(--fog); }
+.PlaylistWrapper .header .left .userDetails .name:hover { color: var(--gold); }
+.PlaylistWrapper .header .left .userDetails .feeling { @apply text-xs; color: var(--muted); }
+.PlaylistWrapper .header .left .profileImg { @apply object-cover w-[2.8rem] h-[2.8rem] rounded-full; }
 
-.PlaylistWrapper .header .left {
-  @apply flex items-center;
-}
+.mainPlaylistContent { @apply flex justify-center; }
+.mainPlaylistContent .PlaylistImage { @apply max-w-full max-h-[20rem] my-4 rounded-xl w-full h-full object-cover; }
 
-.PlaylistWrapper .header .right .option > svg {
-  @apply text-xl cursor-pointer;
-  color: var(--muted);
-}
+.PlaylistFooter { @apply flex justify-between items-center my-3; }
+.PlaylistFooter .PlaylistActions { @apply flex justify-between items-center w-full mb-2; }
+.PlaylistFooter .PlaylistActions svg { @apply mx-2 text-2xl cursor-pointer h-[1.4rem] w-[1.4rem]; color: var(--muted); }
+.PlaylistFooter .PlaylistActions svg:hover { color: var(--fog); }
+.PlaylistFooter .PlaylistActions .left { @apply flex items-center; }
 
-.PlaylistWrapper .header .left .userDetails {
-  @apply ml-3;
-}
-
-.PlaylistWrapper .header .left .userDetails .name {
-  @apply font-semibold cursor-pointer;
-  color: var(--fog);
-}
-
-.PlaylistWrapper .header .left .userDetails .name:hover {
-  color: var(--gold);
-}
-
-.PlaylistWrapper .header .left .userDetails .feeling {
-  @apply text-xs;
-  color: var(--muted);
-}
-
-.PlaylistWrapper .header .left .profileImg {
-  @apply object-cover w-[2.8rem] h-[2.8rem] rounded-full;
-}
-
-.mainPlaylistContent {
-  @apply flex justify-center;
-}
-
-.mainPlaylistContent .PlaylistImage {
-  @apply max-w-full max-h-[20rem] my-4 rounded-xl w-full h-full object-cover;
-}
-
-.PlaylistFooter {
-  @apply flex justify-between items-center my-3;
-}
-
-.PlaylistFooter .PlaylistActions {
-  @apply flex justify-between items-center w-full mb-2;
-}
-
-.PlaylistFooter .PlaylistActions svg {
-  @apply mx-2 text-2xl cursor-pointer h-[1.4rem] w-[1.4rem];
-  color: var(--muted);
-}
-
-.PlaylistFooter .PlaylistActions svg:hover {
-  color: var(--fog);
-}
-
-.PlaylistFooter .PlaylistActions .left {
-  @apply flex items-center;
-}
-
-.noUserFound {
-  @apply flex justify-center items-center flex-col;
-}
-
-.noUserFound svg {
-  @apply text-[5rem] text-gray-600;
-}
-
-.noUserFound h3 {
-  @apply text-[1.5rem] mt-2 text-gray-600;
-}
-
-/* --------------------------- Playlist End --------------------------- */
-
+/* ── Mobile search panel ─────────────────────────────────────────────────── */
 .mobileSearchPanel {
   @apply h-screen w-full fixed top-0 left-0 z-[99999];
   background: var(--ink);
 }
 
 .mobileSearchPanel .closeBtn {
-  @apply h-[2rem] w-full grid place-items-center text-[1.5rem] my-4 text-gray-600 cursor-pointer;
+  @apply h-[2rem] w-full grid place-items-center text-[1.5rem] my-4 cursor-pointer;
+  color: var(--muted);
 }
+.mobileSearchPanel .closeBtn:hover { color: var(--fog); }
 
 .inMobileSearch {
   @apply flex items-center justify-between h-[3rem] mx-4 px-3 rounded-full border;
@@ -505,28 +333,25 @@ body {
   border-color: color-mix(in srgb, var(--line) 80%, transparent);
 }
 
-.inMobileSearch svg {
-  @apply mx-3 text-[1.8rem];
-}
+.inMobileSearch svg { @apply mx-3 text-[1.8rem]; color: var(--muted); }
 
 .inMobileSearch input {
-  @apply w-full h-full focus:outline-none;
+  @apply w-full h-full focus:outline-none bg-transparent;
+  color: var(--fog);
 }
+.inMobileSearch input::placeholder { color: var(--muted); }
 
-.mobileSearchResult {
-  @apply my-5 mx-4;
-}
+.mobileSearchResult { @apply my-5 mx-4; }
 
 .mobileSearchResult .mobileSearchItem {
-  @apply flex items-center px-3 py-2 cursor-pointer rounded-full mx-1 my-2 border;
+  @apply flex items-center px-3 py-2 cursor-pointer rounded-full mx-1 my-2 border transition-colors;
   background: var(--midnight);
   border-color: color-mix(in srgb, var(--line) 80%, transparent);
 }
-
-.mobileSearchResult .mobileSearchItem .profileImage {
-  @apply mr-3;
+.mobileSearchResult .mobileSearchItem:hover {
+  border-color: color-mix(in srgb, var(--line) 100%, transparent);
+  background: color-mix(in srgb, var(--midnight) 80%, var(--line));
 }
 
-.mobileSearchResult .mobileSearchItem .profileImage img {
-  @apply w-[2.5rem] h-[2.5rem] object-cover;
-}
+.mobileSearchResult .mobileSearchItem .profileImage { @apply mr-3; }
+.mobileSearchResult .mobileSearchItem .profileImage img { @apply w-[2.5rem] h-[2.5rem] object-cover rounded-full; }
