@@ -402,7 +402,25 @@ export default function PlaylistPage() {
   if (loading || !p) {
     return (
       <div className="max-w-6xl mx-auto px-5 pt-10 pb-28">
-        <div className="card p-6 text-white/70">Loading playlist…</div>
+        <div
+          className="rounded-2xl border overflow-hidden animate-pulse"
+          style={{ borderColor: "color-mix(in srgb, var(--line) 70%, transparent)" }}
+        >
+          <div className="grid md:grid-cols-[280px_1fr]">
+            <div style={{ height: 280, background: "color-mix(in srgb, var(--line) 30%, transparent)" }} />
+            <div className="p-7 space-y-4">
+              <div className="h-3 w-24 rounded" style={{ background: "color-mix(in srgb, var(--line) 40%, transparent)" }} />
+              <div className="h-8 w-2/3 rounded" style={{ background: "color-mix(in srgb, var(--line) 40%, transparent)" }} />
+              <div className="h-4 w-full rounded" style={{ background: "color-mix(in srgb, var(--line) 30%, transparent)" }} />
+              <div className="h-4 w-3/4 rounded" style={{ background: "color-mix(in srgb, var(--line) 25%, transparent)" }} />
+              <div className="flex gap-2 pt-2">
+                {[80, 64, 72].map((w) => (
+                  <div key={w} className="h-9 rounded-full" style={{ width: w, background: "color-mix(in srgb, var(--line) 35%, transparent)" }} />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -494,25 +512,39 @@ export default function PlaylistPage() {
     <div className="max-w-6xl mx-auto px-5 pt-10 pb-28">
       {/* Top nav */}
       <div className="mb-6 flex items-center justify-between">
-        <Link href="/explore" className="text-sm underline text-white/70 hover:text-white">
-          ← Back to Explore
+        <Link href="/explore" className="text-sm hover:underline" style={{ color: "var(--muted)" }}>
+          ← Explore
         </Link>
         <div className="text-xs text-white/50">Updated {fmtDate(p.createdAt)}</div>
       </div>
 
       {/* Hero */}
-      <div className="card overflow-hidden">
+      <div
+        className="rounded-2xl border overflow-hidden"
+        style={{
+          borderColor: "color-mix(in srgb, var(--line) 70%, transparent)",
+          background: "color-mix(in srgb, var(--midnight) 80%, transparent)",
+        }}
+      >
         <div className="grid md:grid-cols-[280px_1fr] gap-0">
           {/* Cover */}
-          <div className="relative">
-            <img
-              src={p.coverUrl || "/placeholder-cover.png"}
-              alt=""
-              className="w-full object-cover"
-              style={{ height: 280 }}
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
+          <div className="relative" style={{ minHeight: 280 }}>
+            {p.coverUrl ? (
+              <img
+                src={p.coverUrl}
+                alt=""
+                className="w-full h-full object-cover absolute inset-0"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div
+                className="w-full h-full absolute inset-0 flex items-center justify-center text-6xl"
+                style={{ background: "color-mix(in srgb, var(--plum) 18%, var(--midnight))" }}
+              >
+                &#9835;
+              </div>
+            )}
             <div
               className="absolute inset-0"
               style={{ background: "linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0.08))" }}
@@ -653,27 +685,25 @@ export default function PlaylistPage() {
               </Link>
             </div>
 
-            {/* Share URL (for demo screenshots) */}
-            <div className="mt-3 text-xs" style={{ color: "var(--muted)" }}>
-              Share link: <span className="underline break-all">{shareUrl}</span>
-            </div>
-
             {/* Tags */}
-            <div className="mt-5 flex flex-wrap gap-2">
-              {(p.tags || []).slice(0, 10).map((t) => (
-                <Link
-                  key={t}
-                  href={`/explore?tags=${encodeURIComponent(String(t).toLowerCase())}`}
-                  className="px-3 py-1 rounded-full border text-sm"
-                  style={{
-                    background: "transparent",
-                    borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                  }}
-                >
-                  #{t}
-                </Link>
-              ))}
-            </div>
+            {(p.tags || []).length > 0 && (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {(p.tags || []).slice(0, 10).map((t) => (
+                  <Link
+                    key={t}
+                    href={`/explore?tags=${encodeURIComponent(String(t).toLowerCase())}`}
+                    className="px-3 py-1 rounded-full text-xs font-medium transition hover:opacity-80"
+                    style={{
+                      background: "color-mix(in srgb, var(--plum) 18%, transparent)",
+                      color: "color-mix(in srgb, var(--plum) 85%, white)",
+                      border: "1px solid color-mix(in srgb, var(--plum) 30%, transparent)",
+                    }}
+                  >
+                    #{t}
+                  </Link>
+                ))}
+              </div>
+            )}
 
             {/* Tracks (real) */}
             <div className="mt-7">
@@ -731,63 +761,97 @@ export default function PlaylistPage() {
       </div>
 
       {/* More by creator */}
-      <div className="mt-10">
-        <div className="flex items-end justify-between">
+      <div className="mt-12">
+        <div className="flex items-end justify-between mb-5">
           <div>
-            <h2 className="text-2xl font-semibold">More by {handle}</h2>
-            <p className="text-white/60 text-sm mt-1">More public playlists from this creator.</p>
+            <h2 className="text-xl font-semibold text-white">More by {handle}</h2>
+            <p className="text-sm mt-0.5" style={{ color: "var(--muted)" }}>
+              Other public playlists from this creator.
+            </p>
           </div>
-          <Link href="/explore" className="text-sm underline text-white/70 hover:text-white">
+          <Link href="/explore" className="text-xs hover:underline" style={{ color: "var(--gold)" }}>
             See all
           </Link>
         </div>
 
         {moreBy.length ? (
-          <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {moreBy.map((m) => (
-              <div key={m.id} className="card overflow-hidden">
-                <Link href={`/p/${m.id}`} className="block">
-                  <div className="relative">
+              <div
+                key={m.id}
+                className="group rounded-2xl border overflow-hidden flex flex-col transition hover:border-white/20"
+                style={{
+                  borderColor: "color-mix(in srgb, var(--line) 70%, transparent)",
+                  background: "color-mix(in srgb, var(--midnight) 75%, transparent)",
+                }}
+              >
+                <Link href={`/p/${m.id}`} className="block relative flex-shrink-0" style={{ aspectRatio: "16/9" }}>
+                  {m.coverUrl ? (
                     <img
                       src={m.coverUrl}
-                      alt=""
-                      className="w-full object-cover"
-                      style={{ height: 160 }}
+                      alt={m.title}
+                      className="w-full h-full object-cover transition group-hover:brightness-90"
                       loading="lazy"
                       referrerPolicy="no-referrer"
                     />
+                  ) : (
                     <div
-                      className="absolute inset-x-0 bottom-0 p-3"
-                      style={{ background: "linear-gradient(to top, rgba(0,0,0,0.7), transparent)" }}
+                      className="w-full h-full flex items-center justify-center text-3xl"
+                      style={{ background: "color-mix(in srgb, var(--plum) 18%, var(--midnight))" }}
                     >
-                      <div className="font-semibold leading-tight">{m.title}</div>
-                      <div className="text-xs" style={{ color: "var(--muted)" }}>
-                        ♥ {m.likes}
-                      </div>
+                      &#9835;
+                    </div>
+                  )}
+                  <div
+                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+                    style={{ background: "rgba(0,0,0,0.4)" }}
+                  >
+                    <div
+                      className="w-11 h-11 rounded-full flex items-center justify-center"
+                      style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)" }}
+                    >
+                      <span className="text-white text-lg pl-0.5">&#9654;</span>
                     </div>
                   </div>
                 </Link>
-
-                <div className="p-4">
-                  <div className="text-sm text-white/70 line-clamp-2">{m.description}</div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {(m.tags || []).slice(0, 4).map((t) => (
-                      <span
-                        key={`${m.id}-${t}`}
-                        className="px-2.5 py-1 rounded-full border text-xs"
-                        style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-                      >
-                        {t}
-                      </span>
-                    ))}
+                <div className="p-3 flex flex-col gap-1.5 flex-1">
+                  <Link
+                    href={`/p/${m.id}`}
+                    className="font-semibold text-sm text-white hover:underline line-clamp-1"
+                  >
+                    {m.title}
+                  </Link>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs" style={{ color: "var(--muted)" }}>{handle}</span>
+                    <span className="text-xs" style={{ color: "var(--muted)" }}>&#9829; {m.likes}</span>
                   </div>
+                  {(m.tags || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {(m.tags || []).slice(0, 3).map((t) => (
+                        <span
+                          key={`${m.id}-${t}`}
+                          className="text-[10px] px-2 py-0.5 rounded-full"
+                          style={{
+                            background: "color-mix(in srgb, var(--plum) 18%, transparent)",
+                            color: "color-mix(in srgb, var(--plum) 85%, white)",
+                            border: "1px solid color-mix(in srgb, var(--plum) 28%, transparent)",
+                          }}
+                        >
+                          #{t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="card p-6 mt-4">
-            <p className="text-white/60">No other public playlists yet.</p>
+          <div
+            className="rounded-2xl border px-6 py-8 text-center"
+            style={{ borderColor: "color-mix(in srgb, var(--line) 50%, transparent)" }}
+          >
+            <p className="text-sm" style={{ color: "var(--muted)" }}>No other public playlists yet.</p>
           </div>
         )}
       </div>
