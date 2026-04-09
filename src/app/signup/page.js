@@ -44,7 +44,7 @@ function prettyAuthError(message) {
 export default function SignupPage() {
   const router = useRouter();
   const sp = useSearchParams();
-  const next = sp.get("next") || "/";
+  const next = sp.get("next") || "/onboarding";
 
   // keep a stable client instance
   const supabase = useMemo(() => createBrowserClient(), []);
@@ -147,7 +147,7 @@ export default function SignupPage() {
       return;
     }
 
-    router.replace(next);
+    router.replace("/onboarding");
   }
 
   return (

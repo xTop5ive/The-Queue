@@ -418,10 +418,7 @@ export default function ProfilePage() {
               <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
                 Music DNA
               </div>
-              <div className="mt-3 text-lg font-semibold">{insights.musicDNA}</div>
-              <p className="mt-3 text-sm text-white/60">
-                This section summarizes the taste profile based on public playlists, tags, and curation style.
-              </p>
+              <div className="mt-3 text-lg font-semibold">{profile?.music_dna || insights.musicDNA}</div>
             </div>
 
             <div className="card p-5">
@@ -483,17 +480,17 @@ export default function ProfilePage() {
               <div className="mt-4 flex flex-wrap gap-2">
                 {insights.communities.length ? (
                   insights.communities.map((community) => (
-                    <button
+                    <Link
                       key={community.slug}
-                      type="button"
-                      className="px-3 py-1.5 rounded-full border text-sm"
+                      href={`/communities/${community.slug}`}
+                      className="px-3 py-1.5 rounded-full border text-sm hover:bg-white/5 transition"
                       style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
                     >
                       {community.label}
-                    </button>
+                    </Link>
                   ))
                 ) : (
-                  <span className="text-white/50 text-sm">Communities coming soon.</span>
+                  <span className="text-white/50 text-sm">No communities yet.</span>
                 )}
               </div>
             </div>

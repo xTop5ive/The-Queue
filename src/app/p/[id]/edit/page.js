@@ -1,38 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createBrowserClient } from "@/lib/supabase-browser";
 import TagInput from "@/components/TagInput";
 
-// keep consistent with /new
 const MAX_TRACKS = 500;
+const COVERS_BUCKET = "covers";
 
 function parseYouTubeId(input) {
   const s = (input || "").trim();
   if (!s) return "";
   if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
-
   try {
     const u = new URL(s);
     const host = u.hostname.replace(/^www\./, "");
-
     if (host === "youtu.be") {
       const id = u.pathname.split("/").filter(Boolean)[0] || "";
       return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : "";
     }
-
     if (host.endsWith("youtube.com")) {
       const v = u.searchParams.get("v") || "";
       if (/^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
-
       const parts = u.pathname.split("/").filter(Boolean);
-      const embedIdx = parts.indexOf("embed");
-      if (embedIdx >= 0 && parts[embedIdx + 1]) {
-        const id = parts[embedIdx + 1];
-        return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : "";
-      }
+      const ei = parts.indexOf("embed");
+      if (ei >= 0 && parts[ei + 1] && /^[a-zA-Z0-9_-]{11}$/.test(parts[ei + 1])) return parts[ei + 1];
     }
   } catch {}
   return "";
@@ -47,32 +40,36 @@ export default function EditPlaylistPage() {
   const router = useRouter();
   const supabase = useMemo(() => createBrowserClient(), []);
 
-  // form
+  // playlist basics
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState([]);
+  const [isPublic, setIsPublic] = useState(true);
 
+  // cover
+  const [existingCoverUrl, setExistingCoverUrl] = useState("");
+  const [existingCoverPath, setExistingCoverPath] = useState("");
+  const [coverFile, setCoverFile] = useState(null);
+  const [coverPreview, setCoverPreview] = useState("");
+
+  // DJ stats
   const [avgBpm, setAvgBpm] = useState("");
   const [energy, setEnergy] = useState("");
   const [clean, setClean] = useState(true);
   const [keys, setKeys] = useState([]);
+  const [showDjStats, setShowDjStats] = useState(false);
 
+  // tracks
   const [tracks, setTracks] = useState([emptyTrack()]);
 
-  // state
+  // ui
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  // load playlist + tracks
   useEffect(() => {
     let alive = true;
-
     (async () => {
-      setErr("");
-      setLoading(true);
-
-      // must be logged in
       const { data: auth } = await supabase.auth.getUser();
       const user = auth?.user;
       if (!user) {
@@ -80,20 +77,10 @@ export default function EditPlaylistPage() {
         return;
       }
 
-      // playlist
       const { data: p, error: pErr } = await supabase.from("playlists").select("*").eq("id", id).single();
-      if (pErr || !p) {
-        router.replace("/explore");
-        return;
-      }
+      if (pErr || !p) { router.replace("/explore"); return; }
+      if (p.user_id !== user.id) { router.replace(`/p/${id}`); return; }
 
-      // owner gate
-      if (p.user_id !== user.id) {
-        router.replace(`/p/${id}`);
-        return;
-      }
-
-      // tracks
       const { data: trows } = await supabase
         .from("playlist_tracks")
         .select("id, position, title, artist, youtube_video_id")
@@ -105,28 +92,32 @@ export default function EditPlaylistPage() {
       setTitle(p.title ?? "");
       setDescription(p.description ?? "");
       setTags(Array.isArray(p.tags) ? p.tags : []);
-
+      setIsPublic(typeof p.is_public === "boolean" ? p.is_public : true);
+      setExistingCoverUrl(p.cover_url ?? "");
+      setExistingCoverPath(p.cover_path ?? "");
       setAvgBpm(p.avg_bpm ?? "");
       setEnergy(p.energy ?? "");
       setClean(typeof p.clean === "boolean" ? p.clean : true);
       setKeys(Array.isArray(p.keys) ? p.keys : []);
-
-      const seed = (trows || []).length
-        ? (trows || []).map((t) => ({
-            title: t.title || "",
-            artist: t.artist || "",
-            youtubeUrl: t.youtube_video_id || "",
-          }))
-        : [emptyTrack()];
-
-      setTracks(seed);
+      setTracks(
+        (trows || []).length
+          ? trows.map((t) => ({ title: t.title || "", artist: t.artist || "", youtubeUrl: t.youtube_video_id || "" }))
+          : [emptyTrack()]
+      );
       setLoading(false);
     })();
-
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [id, router, supabase]);
+
+  useEffect(() => {
+    return () => { if (coverPreview) URL.revokeObjectURL(coverPreview); };
+  }, [coverPreview]);
+
+  function onPickCover(file) {
+    if (!file) return;
+    setCoverFile(file);
+    setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
+  }
 
   async function saveChanges(e) {
     e.preventDefault();
@@ -134,27 +125,20 @@ export default function EditPlaylistPage() {
     setSaving(true);
 
     try {
-      // validate basics
       const cleanTitle = title.trim();
       if (!cleanTitle) throw new Error("Title is required.");
       if (cleanTitle.length > 60) throw new Error("Title must be 60 characters or less.");
 
       const bpmNum = avgBpm === "" ? null : Number(avgBpm);
       const energyNum = energy === "" ? null : Number(energy);
-
-      if (bpmNum !== null && (!Number.isFinite(bpmNum) || bpmNum < 40 || bpmNum > 220)) {
+      if (bpmNum !== null && (!Number.isFinite(bpmNum) || bpmNum < 40 || bpmNum > 220))
         throw new Error("Avg BPM must be between 40 and 220.");
-      }
-      if (energyNum !== null && (!Number.isFinite(energyNum) || energyNum < 0 || energyNum > 10)) {
+      if (energyNum !== null && (!Number.isFinite(energyNum) || energyNum < 0 || energyNum > 10))
         throw new Error("Energy must be between 0 and 10.");
-      }
 
-      const keysArr = (keys || [])
-        .map((k) => String(k).trim().toUpperCase())
-        .filter(Boolean)
-        .slice(0, 4);
+      const keysArr = (keys || []).map((k) => String(k).trim().toUpperCase()).filter(Boolean).slice(0, 4);
 
-      const normTracks = (tracks || [])
+      const normTracks = tracks
         .map((t) => ({
           title: String(t?.title || "").trim(),
           artist: String(t?.artist || "").trim(),
@@ -163,47 +147,61 @@ export default function EditPlaylistPage() {
         .filter((t) => t.title || t.artist || t.youtubeUrl);
 
       if (!normTracks.length) throw new Error("Add at least 1 track.");
-      if (normTracks.length > MAX_TRACKS) throw new Error(`Too many tracks. Max ${MAX_TRACKS}.`);
 
       const toInsert = normTracks.map((t, idx) => {
         const yid = parseYouTubeId(t.youtubeUrl);
-        if (!yid) throw new Error(`Track #${idx + 1} needs a valid YouTube link or 11-char id.`);
-        return {
-          playlist_id: id,
-          position: idx + 1,
-          title: t.title || `Track ${idx + 1}`,
-          artist: t.artist || null,
-          youtube_video_id: yid,
-        };
+        if (!yid) throw new Error(`Track #${idx + 1} needs a valid YouTube link or video id.`);
+        return { playlist_id: id, position: idx + 1, title: t.title || `Track ${idx + 1}`, artist: t.artist || null, youtube_video_id: yid };
       });
 
-      const firstYoutubeId = toInsert[0]?.youtube_video_id || null;
+      // Upload new cover if picked
+      let cover_url = existingCoverUrl || null;
+      let cover_path = existingCoverPath || null;
 
-      // 1) update playlist fields
+      if (coverFile) {
+        // remove old cover from storage
+        if (existingCoverPath) {
+          await supabase.storage.from(COVERS_BUCKET).remove([existingCoverPath]);
+        }
+        const { data: authData } = await supabase.auth.getUser();
+        const uid = authData?.user?.id;
+        const ext = (coverFile.name.split(".").pop() || "jpg").toLowerCase();
+        cover_path = `${uid}/${crypto.randomUUID()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from(COVERS_BUCKET).upload(cover_path, coverFile, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: coverFile.type || "image/jpeg",
+        });
+        if (upErr) throw upErr;
+        const { data: pub } = supabase.storage.from(COVERS_BUCKET).getPublicUrl(cover_path);
+        cover_url = pub?.publicUrl || null;
+      }
+
+      // Update playlist
       const { error: upErr } = await supabase
         .from("playlists")
         .update({
           title: cleanTitle,
           description: description.trim() || null,
           tags: (tags || []).slice(0, 10).map((t) => String(t).trim().toLowerCase()).filter(Boolean),
+          is_public: isPublic,
           avg_bpm: bpmNum,
           energy: energyNum,
           clean,
           keys: keysArr,
-          youtube_video_id: firstYoutubeId,
+          youtube_video_id: toInsert[0]?.youtube_video_id || null,
+          cover_url,
+          cover_path,
         })
         .eq("id", id);
-
       if (upErr) throw upErr;
 
-      // 2) replace tracks (simple + reliable)
+      // Replace tracks
       const { error: delErr } = await supabase.from("playlist_tracks").delete().eq("playlist_id", id);
       if (delErr) throw delErr;
-
       const { error: insErr } = await supabase.from("playlist_tracks").insert(toInsert);
       if (insErr) throw insErr;
 
-      // done → back to playlist page
       router.replace(`/p/${id}`);
     } catch (e2) {
       setErr(e2?.message || "Could not save changes.");
@@ -212,230 +210,368 @@ export default function EditPlaylistPage() {
     }
   }
 
+  const inputCls = "w-full px-4 py-2.5 rounded-xl bg-transparent border text-white outline-none text-sm placeholder-white/30";
+  const borderStyle = { borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" };
+  const cardStyle = {
+    borderColor: "color-mix(in srgb, var(--line) 70%, transparent)",
+    background: "color-mix(in srgb, var(--midnight) 80%, transparent)",
+  };
+
+  const savedTracksCount = tracks.filter((t) => t.title.trim() || t.youtubeUrl.trim()).length;
+  const displayCover = coverPreview || existingCoverUrl;
+
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-5 py-10">
-        <div className="card p-6 text-white/70">Loading edit form…</div>
+      <div className="max-w-3xl mx-auto px-5 py-10">
+        <div className="rounded-2xl border p-8 text-white/40 text-center" style={cardStyle}>
+          Loading…
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-5 py-10">
-      <div className="flex items-center justify-between gap-4">
+    <div className="max-w-3xl mx-auto px-5 py-10 pb-32">
+
+      {/* Header */}
+      <div className="mb-8 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold">Edit playlist</h1>
-          <p className="text-white/60 mt-1">Update details, tags, and tracks.</p>
+          <div className="text-xs uppercase tracking-widest font-medium mb-1" style={{ color: "var(--gold)" }}>
+            The Queue
+          </div>
+          <h1 className="text-3xl font-semibold text-white">Edit Playlist</h1>
+          <p className="text-white/50 mt-1 text-sm">Update details, tracks, and cover.</p>
         </div>
-        <Link href={`/p/${id}`} className="underline text-white/70 hover:text-white">
-          Back to playlist
+        <Link
+          href={`/p/${id}`}
+          className="text-sm flex-shrink-0 mt-1"
+          style={{ color: "var(--muted)" }}
+        >
+          Cancel
         </Link>
       </div>
 
-      <form onSubmit={saveChanges} className="mt-6 card p-6 space-y-6">
-        {/* Title */}
-        <div>
-          <label className="block text-white font-semibold">Title</label>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-            style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-            maxLength={60}
-          />
-          <div className="mt-1 text-xs text-white/50">{title.length}/60</div>
-        </div>
+      <form onSubmit={saveChanges} className="space-y-5">
 
-        {/* Description */}
-        <div>
-          <label className="block text-white font-semibold">Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none min-h-[120px]"
-            style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-          />
-        </div>
-
-        {/* Tags */}
-        <div>
-          <div className="flex items-center justify-between">
-            <label className="text-white font-semibold">Tags</label>
-            <div className="text-xs text-white/50">Up to 10</div>
-          </div>
-          <div className="mt-2">
-            <TagInput value={tags} onChange={setTags} max={10} placeholder="Type a tag and press Enter" />
-          </div>
-        </div>
-
-        {/* DJ stats */}
-        <div className="rounded-xl border p-4" style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}>
-          <div className="text-white font-semibold">DJ stats (optional)</div>
-
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-white/60">Avg BPM</label>
-              <input
-                value={String(avgBpm ?? "")}
-                onChange={(e) => setAvgBpm(e.target.value.replace(/[^0-9]/g, ""))}
-                className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-                style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-              />
+        {/* ── Section 1: Cover + Basics ──────────────────────────────────── */}
+        <div className="rounded-2xl border p-6 grid md:grid-cols-[160px_1fr] gap-6" style={cardStyle}>
+          {/* Cover */}
+          <div>
+            <div
+              className="aspect-square rounded-xl border overflow-hidden flex items-center justify-center"
+              style={borderStyle}
+            >
+              {displayCover ? (
+                <img src={displayCover} alt="Cover" className="w-full h-full object-cover" />
+              ) : (
+                <div className="text-center px-3">
+                  <div className="text-2xl text-white/20 mb-1">♫</div>
+                  <div className="text-xs text-white/40">No cover</div>
+                </div>
+              )}
             </div>
-
-            <div>
-              <label className="block text-xs text-white/60">Energy (0–10)</label>
+            <label
+              className="mt-3 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full border text-xs text-white/70 cursor-pointer hover:text-white transition"
+              style={borderStyle}
+            >
+              {coverFile ? "Change" : displayCover ? "Replace cover" : "Upload cover"}
               <input
-                value={String(energy ?? "")}
-                onChange={(e) => setEnergy(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
-                className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-                style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => onPickCover(e.target.files?.[0] || null)}
               />
-            </div>
+            </label>
+            {coverFile && (
+              <button
+                type="button"
+                className="mt-2 w-full text-xs text-white/40 hover:text-white/70 transition"
+                onClick={() => {
+                  setCoverFile(null);
+                  setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
+                }}
+              >
+                Undo change
+              </button>
+            )}
+          </div>
 
-            <div className="sm:col-span-2 flex items-center justify-between rounded-xl border px-4 py-3"
-              style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}>
-              <div>
-                <div className="text-white font-semibold">Version</div>
-                <div className="text-xs text-white/60">Clean playlists show up when people filter “Clean only”.</div>
+          {/* Basics */}
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm font-medium text-white">
+                  Title <span style={{ color: "var(--gold)" }}>*</span>
+                </label>
+                <span className="text-xs text-white/30">{title.length}/60</span>
               </div>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Playlist title"
+                className={inputCls}
+                style={borderStyle}
+                maxLength={60}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-white mb-1.5 block">Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What's the vibe?"
+                rows={3}
+                className={`${inputCls} resize-none`}
+                style={borderStyle}
+              />
+            </div>
+
+            {/* Visibility + Clean */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsPublic((v) => !v)}
+                className="flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition"
+                style={{
+                  ...borderStyle,
+                  background: isPublic ? "color-mix(in srgb, var(--gold) 14%, transparent)" : "transparent",
+                  color: isPublic ? "var(--gold)" : "var(--muted)",
+                }}
+              >
+                <span>{isPublic ? "🌐" : "🔒"}</span>
+                {isPublic ? "Public" : "Private"}
+              </button>
+
               <button
                 type="button"
                 onClick={() => setClean((v) => !v)}
-                className="px-4 py-2 rounded-full border text-sm"
-                style={{
-                  borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                  background: clean ? "color-mix(in srgb, var(--gold) 16%, transparent)" : "transparent",
-                  color: "white",
-                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition"
+                style={{ ...borderStyle, color: "var(--muted)" }}
               >
-                {clean ? "Clean" : "Explicit"}
+                {clean ? "✓ Clean" : "Explicit"}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Tracks */}
-        <div className="rounded-xl border p-4" style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}>
-          <div className="flex items-start justify-between gap-3">
+        {/* ── Section 2: Tracks ──────────────────────────────────────────── */}
+        <div className="rounded-2xl border p-6" style={cardStyle}>
+          <div className="flex items-center justify-between mb-5">
             <div>
-              <div className="text-white font-semibold">Tracks</div>
-              <div className="text-xs text-white/60">Add / remove songs. Uses YouTube links or video ids.</div>
+              <h2 className="font-semibold text-white">Tracks</h2>
+              <p className="text-white/40 text-xs mt-0.5">
+                {savedTracksCount > 0
+                  ? `${savedTracksCount} track${savedTracksCount !== 1 ? "s" : ""}`
+                  : "No tracks yet"}
+              </p>
             </div>
             <button
               type="button"
-              className="px-4 py-2 rounded-full border text-sm"
-              style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-              onClick={() => setTracks((prev) => (prev.length >= MAX_TRACKS ? prev : [...prev, emptyTrack()]))}
+              className="px-4 py-2 rounded-full border text-sm transition"
+              style={{ ...borderStyle, color: "white" }}
+              onClick={() => setTracks((prev) => prev.length >= MAX_TRACKS ? prev : [...prev, emptyTrack()])}
             >
-              + Add track
+              + Add row
             </button>
           </div>
 
-          <div className="mt-4 grid gap-3">
-            {tracks.map((t, idx) => (
-              <div
-                key={idx}
-                className="rounded-xl border p-3"
-                style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-white/60">Track {idx + 1}</div>
-                  {tracks.length > 1 ? (
-                    <button
-                      type="button"
-                      className="text-xs underline text-white/60 hover:text-white"
-                      onClick={() =>
-                        setTracks((prev) => {
-                          const next = prev.filter((_, i) => i !== idx);
-                          return next.length ? next : [emptyTrack()];
-                        })
-                      }
-                    >
-                      Remove
-                    </button>
-                  ) : null}
+          <div className="space-y-2">
+            {tracks.map((t, idx) => {
+              const yid = parseYouTubeId(t.youtubeUrl);
+              const hasUrl = t.youtubeUrl.trim().length > 0;
+              return (
+                <div key={idx} className="flex items-center gap-2">
+                  <span className="text-white/25 text-xs w-5 text-right flex-shrink-0 select-none">
+                    {idx + 1}
+                  </span>
+
+                  <input
+                    value={t.title}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setTracks((prev) => { const c = [...prev]; c[idx] = { ...c[idx], title: v }; return c; });
+                    }}
+                    placeholder="Title"
+                    className={inputCls}
+                    style={borderStyle}
+                  />
+
+                  <input
+                    value={t.artist}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setTracks((prev) => { const c = [...prev]; c[idx] = { ...c[idx], artist: v }; return c; });
+                    }}
+                    placeholder="Artist"
+                    className={`${inputCls} hidden sm:block`}
+                    style={borderStyle}
+                  />
+
+                  <input
+                    value={t.youtubeUrl}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setTracks((prev) => { const c = [...prev]; c[idx] = { ...c[idx], youtubeUrl: v }; return c; });
+                    }}
+                    placeholder="YouTube link"
+                    className={inputCls}
+                    style={{
+                      ...borderStyle,
+                      borderColor: hasUrl && !yid
+                        ? "color-mix(in srgb, #f87171 60%, transparent)"
+                        : yid
+                        ? "color-mix(in srgb, var(--gold) 40%, transparent)"
+                        : borderStyle.borderColor,
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => setTracks((prev) => {
+                      const next = prev.filter((_, i) => i !== idx);
+                      return next.length ? next : [emptyTrack()];
+                    })}
+                    className="text-white/25 hover:text-white/60 transition flex-shrink-0 text-lg leading-none px-1"
+                    title="Remove"
+                  >
+                    x
+                  </button>
                 </div>
+              );
+            })}
+          </div>
 
-                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs text-white/60">Title</label>
-                    <input
-                      value={t.title}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setTracks((prev) => {
-                          const cur = [...prev];
-                          cur[idx] = { ...cur[idx], title: v };
-                          return cur;
-                        });
-                      }}
-                      className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-                      style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-                    />
-                  </div>
+          {tracks.length > 0 && (
+            <div className="mt-4 text-xs text-white/30 text-right">
+              {savedTracksCount} / {MAX_TRACKS} tracks
+            </div>
+          )}
+        </div>
 
-                  <div>
-                    <label className="block text-xs text-white/60">Artist (optional)</label>
-                    <input
-                      value={t.artist}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setTracks((prev) => {
-                          const cur = [...prev];
-                          cur[idx] = { ...cur[idx], artist: v };
-                          return cur;
-                        });
-                      }}
-                      className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-                      style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-                    />
-                  </div>
+        {/* ── Section 3: Details ─────────────────────────────────────────── */}
+        <div className="rounded-2xl border p-6" style={cardStyle}>
+          <h2 className="font-semibold text-white mb-4">Details</h2>
 
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs text-white/60">YouTube link or video id</label>
-                    <input
-                      value={t.youtubeUrl}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setTracks((prev) => {
-                          const cur = [...prev];
-                          cur[idx] = { ...cur[idx], youtubeUrl: v };
-                          return cur;
-                        });
-                      }}
-                      className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-                      style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-                      placeholder="https://youtu.be/... or 11-char id"
-                    />
-                    {t.youtubeUrl.trim() ? (
-                      parseYouTubeId(t.youtubeUrl) ? (
-                        <div className="mt-2 text-[11px] text-white/60">OK</div>
-                      ) : (
-                        <div className="mt-2 text-[11px] text-red-300">Invalid YouTube link/id.</div>
-                      )
-                    ) : null}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-sm font-medium text-white">Tags</label>
+              <span className="text-xs text-white/30">up to 10</span>
+            </div>
+            <TagInput value={tags} onChange={setTags} max={10} placeholder="Type a tag and press Enter" />
+          </div>
+
+          {/* DJ Stats — collapsible */}
+          <div className="mt-5">
+            <button
+              type="button"
+              onClick={() => setShowDjStats((v) => !v)}
+              className="flex items-center gap-2 text-sm transition"
+              style={{ color: showDjStats ? "var(--gold)" : "var(--muted)" }}
+            >
+              <span>{showDjStats ? "▾" : "▸"}</span>
+              DJ stats
+              <span className="text-xs opacity-60">(optional)</span>
+            </button>
+
+            {showDjStats && (
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-white/50 mb-1.5 block">Avg BPM</label>
+                  <input
+                    value={String(avgBpm ?? "")}
+                    onChange={(e) => setAvgBpm(e.target.value.replace(/[^0-9]/g, ""))}
+                    inputMode="numeric"
+                    placeholder="e.g., 124"
+                    className={inputCls}
+                    style={borderStyle}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-white/50 mb-1.5 block">Energy (0–10)</label>
+                  <input
+                    value={String(energy ?? "")}
+                    onChange={(e) => setEnergy(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
+                    inputMode="numeric"
+                    placeholder="e.g., 7"
+                    className={inputCls}
+                    style={borderStyle}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-xs text-white/50 mb-2 block">Key — Camelot (up to 4)</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      "1A","2A","3A","4A","5A","6A","7A","8A","9A","10A","11A","12A",
+                      "1B","2B","3B","4B","5B","6B","7B","8B","9B","10B","11B","12B",
+                    ].map((k) => {
+                      const active = (keys || []).includes(k);
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setKeys((prev) => {
+                            const cur = Array.isArray(prev) ? prev : [];
+                            if (cur.includes(k)) return cur.filter((x) => x !== k);
+                            if (cur.length >= 4) return cur;
+                            return [...cur, k];
+                          })}
+                          className="px-2.5 py-1 rounded-full border text-xs transition"
+                          style={{
+                            ...borderStyle,
+                            background: active ? "color-mix(in srgb, var(--gold) 16%, transparent)" : "transparent",
+                            color: active ? "var(--gold)" : "var(--muted)",
+                          }}
+                        >
+                          {k}
+                        </button>
+                      );
+                    })}
+                    {keys.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setKeys([])}
+                        className="px-2.5 py-1 rounded-full border text-xs"
+                        style={{ ...borderStyle, color: "var(--muted)" }}
+                      >
+                        Clear
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
-        {err ? <div className="text-red-400 text-sm">{err}</div> : null}
+        {/* Error */}
+        {err && (
+          <div
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{
+              background: "color-mix(in srgb, #f87171 10%, transparent)",
+              border: "1px solid color-mix(in srgb, #f87171 40%, transparent)",
+              color: "#fca5a5",
+            }}
+          >
+            {err}
+          </div>
+        )}
 
-        <div className="flex items-center gap-3">
+        {/* Actions */}
+        <div className="flex items-center gap-3 pb-4">
           <button type="submit" className="inBtn" disabled={saving}>
-            {saving ? "Saving..." : "Save changes"}
+            {saving ? "Saving…" : "Save changes"}
           </button>
           <Link
             href={`/p/${id}`}
-            className="px-4 py-2 rounded-full border text-white/80"
-            style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+            className="px-5 py-2.5 rounded-full border text-sm transition"
+            style={{ ...borderStyle, color: "var(--muted)" }}
           >
             Cancel
           </Link>
         </div>
+
       </form>
     </div>
   );

@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import { usePlayerContext } from "@/app/components/player/PlayerProvider";
+import CommentsSection from "@/app/components/CommentsSection";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
@@ -116,8 +117,6 @@ export default function PlaylistPage() {
 
   // --- Global Player Context (if available) ---
   const player = usePlayerContext?.() || null;
-  const loadQueue = player?.loadQueue;
-  const queuePlay = player?.play;
   const queueIsPlaying = !!player?.isPlaying;
   const queueCurrentTrack = player?.currentTrack || null;
   const queueIndex = typeof player?.index === "number" ? player.index : 0;
@@ -154,16 +153,6 @@ export default function PlaylistPage() {
   const currentVideoId = player ? (queueCurrentTrack?.youtube_video_id || queueCurrentTrack?.videoId || queueCurrentTrack?.youtubeUrl || "") : fallbackVideoId;
 
   const likedQP = sp?.get("liked") === "1";
-
-  // demo comments (stub)
-  const comments = useMemo(
-    () => [
-      { id: "c1", user: "@dj5ive", text: "This playlist is insane. The transitions are clean.", time: "2h" },
-      { id: "c2", user: "@lateNightVibes", text: "Need a part 2 of this one.", time: "5h" },
-      { id: "c3", user: "@austinlinks", text: "Perfect for a night drive downtown.", time: "1d" },
-    ],
-    []
-  );
 
   const refreshLikeState = useCallback(
     async (playlistId, currentUserId) => {
@@ -431,84 +420,52 @@ export default function PlaylistPage() {
   function getQueueTracks() {
     return (tracks || []).map((t) => ({
       ...t,
+      // Always pass a clean 11-char YouTube ID — never a raw URL
+      videoId: extractYouTubeId(t.youtube_video_id || t.videoId || ""),
       coverUrl: p?.coverUrl || p?.cover_url || "",
     }));
   }
 
+  const isThisPlaylistActive = player?.playlistId === p?.id;
+
   function playAt(idx) {
     const safeIdx = Math.max(0, Math.min(idx, Math.max(0, tracks.length - 1)));
+    const qt = getQueueTracks();
 
-    // Preferred path: real global queue playback
-    if (loadQueue && tracks.length) {
-      loadQueue(getQueueTracks(), safeIdx, { playlistId: p?.id, playlistTitle: p?.title });
-
-      // Explicitly start playback after loading the queue
-      if (queuePlay) {
-        setTimeout(() => {
-          queuePlay();
-        }, 120);
-      }
+    if (player?.playQueue && qt.length) {
+      player.playQueue(qt, safeIdx, { playlistId: p?.id, playlistTitle: p?.title });
       return;
     }
 
-    // Local fallback if player context is unavailable
-    if (tracks.length) {
-      const raw = tracks[safeIdx]?.youtube_video_id || "";
-      const vid = extractYouTubeId(raw);
-
-      if (!vid) {
-        alert("That track is missing a valid YouTube video id.");
-        return;
-      }
-
+    // Local fallback (no global player)
+    const raw = tracks[safeIdx]?.youtube_video_id || "";
+    const vid = extractYouTubeId(raw);
+    if (vid) {
       setFallbackTrackIndex(safeIdx);
       setFallbackVideoId(vid);
-      return;
     }
-
-    const fallback = extractYouTubeId(p?.youtubeId);
-    if (!fallback) {
-      alert("No tracks saved yet. Add tracks (YouTube IDs) to this playlist, then come back and press Play.");
-      return;
-    }
-
-    setFallbackTrackIndex(0);
-    setFallbackVideoId(fallback);
   }
 
   function startPlayback() {
-    // Preferred path: use global player queue
-    if (loadQueue) {
-      if (queueCurrentTrack) {
-        if (queueToggle && !queueIsPlaying) {
-          queueToggle();
-        }
+    const qt = getQueueTracks();
+
+    if (player?.playQueue && qt.length) {
+      // If this playlist is already loaded and just paused, resume.
+      if (isThisPlaylistActive && !queueIsPlaying) {
+        queueToggle?.();
         return;
       }
-
-      if (tracks.length) {
-        loadQueue(getQueueTracks(), 0, { playlistId: p?.id, playlistTitle: p?.title });
-
-        if (queuePlay) {
-          setTimeout(() => {
-            queuePlay();
-          }, 120);
-        }
-        return;
-      }
+      // Otherwise load this playlist fresh from track 1.
+      player.playQueue(qt, 0, { playlistId: p?.id, playlistTitle: p?.title });
+      return;
     }
 
     // Local fallback
-    const currentOk = extractYouTubeId(currentVideoId);
-    if (currentOk) return;
     playAt(0);
   }
 
   function pausePlayback() {
-    if (queueToggle && queueIsPlaying) {
-      queueToggle();
-      return;
-    }
+    if (queueToggle && queueIsPlaying) queueToggle();
   }
 
   function nextTrack() {
@@ -597,21 +554,13 @@ export default function PlaylistPage() {
 
             {/* Actions */}
             <div className="mt-6 flex flex-wrap items-center gap-2">
-              <button className="inBtn" type="button" onClick={startPlayback}>
-                ▶ {tracks.length ? (queueIsPlaying ? "Play from start" : "Play") : extractYouTubeId(currentVideoId || p?.youtubeId) ? "Play" : "Play (add tracks)"}
-              </button>
-
+              {/* Single play/pause toggle — shows state of THIS playlist */}
               <button
+                className="inBtn"
                 type="button"
-                onClick={pausePlayback}
-                className="px-4 py-2 rounded-full border text-sm"
-                style={{
-                  borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                  background: "color-mix(in srgb, var(--midnight) 85%, transparent)",
-                  color: "var(--fog)",
-                }}
+                onClick={isThisPlaylistActive && queueIsPlaying ? pausePlayback : startPlayback}
               >
-                ❚❚ Pause
+                {isThisPlaylistActive && queueIsPlaying ? "❚❚ Pause" : "▶ Play"}
               </button>
 
               {/* Like (REAL) */}
@@ -661,17 +610,9 @@ export default function PlaylistPage() {
                 Post
               </a>
 
-              <button
-                type="button"
-                className="px-4 py-2 rounded-full border text-sm"
-                style={{
-                  borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                  background: "color-mix(in srgb, var(--midnight) 85%, transparent)",
-                  color: "var(--fog)",
-                }}
-              >
-                + Save (stub)
-              </button>
+              {user && (
+                <ShareToCommunityButton playlistId={p.id} userId={user.id} supabase={supabase} />
+              )}
               {isOwner ? (
                 <Link
                   href={`/p/${p.id}/edit`}
@@ -851,64 +792,11 @@ export default function PlaylistPage() {
         )}
       </div>
 
-      {/* Comments stub */}
-      <div className="mt-10">
-        <h2 className="text-2xl font-semibold">Comments</h2>
-        <p className="text-white/60 text-sm mt-1">Community reactions (UI stub).</p>
+      {/* Comments */}
+      <CommentsSection playlistId={p.id} user={user} supabase={supabase} />
 
-        <div className="card p-5 mt-4">
-          <form action="#" className="flex gap-2">
-            <input
-              placeholder="Add a comment… (stub)"
-              className="w-full px-4 py-2 rounded-full border"
-              style={{
-                background: "color-mix(in srgb, var(--midnight) 90%, transparent)",
-                borderColor: "color-mix(in srgb, var(--line) 85%, transparent)",
-                color: "var(--fog)",
-              }}
-            />
-            <button className="inBtn" type="button">
-              Post
-            </button>
-          </form>
-
-          <div className="mt-5 space-y-4">
-            {comments.map((c) => (
-              <div key={c.id} className="flex gap-3">
-                <div
-                  className="w-10 h-10 rounded-full border flex-shrink-0"
-                  style={{
-                    borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                    background: "color-mix(in srgb, var(--midnight) 85%, transparent)",
-                  }}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold">{c.user}</span>
-                    <span className="text-white/40 text-xs">•</span>
-                    <span className="text-white/50 text-xs">{c.time}</span>
-                  </div>
-                  <div className="text-white/80 text-sm mt-1">{c.text}</div>
-                  <div className="mt-2 flex items-center gap-4 text-xs text-white/50">
-                    <button type="button" className="hover:text-white/70">
-                      Like
-                    </button>
-                    <button type="button" className="hover:text-white/70">
-                      Reply
-                    </button>
-                    <button type="button" className="hover:text-white/70">
-                      Share
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Sticky play bar (UI only) */}
-      <div
+      {/* Inline mini-controls bar — only shown when no global sticky player is available */}
+      {!player && <div
         className="fixed left-0 right-0 bottom-0 z-50"
         style={{
           background: "color-mix(in srgb, var(--midnight) 92%, black)",
@@ -1105,7 +993,97 @@ export default function PlaylistPage() {
             <span>{fmtTime(queueDuration)}</span>
           </div>
         </div>
-      </div>
+      </div>}
     </div>
+  );
+}
+
+function ShareToCommunityButton({ playlistId, userId, supabase }) {
+  const [open, setOpen] = useState(false);
+  const [communities, setCommunities] = useState([]);
+  const [selected, setSelected] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const openModal = async () => {
+    setOpen(true);
+    setMsg("");
+    if (!communities.length) {
+      const { data } = await supabase
+        .from("community_members")
+        .select("community_slug, communities:community_slug(slug,name)")
+        .eq("user_id", userId);
+      const list = (data || []).map((r) => r.communities).filter(Boolean);
+      setCommunities(list);
+      if (list.length) setSelected(list[0].slug);
+    }
+  };
+
+  const submit = async () => {
+    if (!selected || busy) return;
+    setBusy(true);
+    const { error } = await supabase.from("community_playlists").insert({
+      community_slug: selected, playlist_id: playlistId, user_id: userId,
+    });
+    if (error) {
+      setMsg(error.code === "23505" ? "Already shared to this community." : error.message);
+    } else {
+      setMsg("Shared!");
+      setTimeout(() => { setOpen(false); setMsg(""); }, 1400);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={openModal}
+        className="px-4 py-2 rounded-full border text-sm"
+        style={{
+          borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
+          background: "color-mix(in srgb, var(--midnight) 85%, transparent)",
+          color: "var(--fog)",
+        }}
+      >
+        + Community
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.7)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+          <div className="card p-6 w-full max-w-sm">
+            <div className="font-semibold text-white mb-4">Share to Community</div>
+            {communities.length === 0 ? (
+              <div className="text-white/50 text-sm mb-4">
+                You haven't joined any communities yet.{" "}
+                <a href="/communities" className="underline text-white/70">Browse communities</a>
+              </div>
+            ) : (
+              <>
+                <select value={selected} onChange={(e) => setSelected(e.target.value)}
+                  className="w-full rounded-xl border px-3 py-2.5 bg-transparent text-white mb-4"
+                  style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}>
+                  {communities.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
+                </select>
+                {msg && <p className={`text-sm mb-3 ${msg === "Shared!" ? "text-green-400" : "text-red-400"}`}>{msg}</p>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={submit} disabled={busy} className="inBtn"
+                    style={{ opacity: busy ? 0.6 : 1 }}>
+                    {busy ? "Sharing…" : "Share"}
+                  </button>
+                  <button type="button" onClick={() => setOpen(false)}
+                    className="px-4 py-2 rounded-full border text-sm"
+                    style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)", color: "var(--fog)" }}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

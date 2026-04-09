@@ -4,7 +4,17 @@ import FriendsInTheRoom from "./components/FriendsInTheRoom";
 
 export const dynamic = "force-dynamic";
 
-function pill(text) {
+function pill(text, href) {
+  if (href) {
+    return (
+      <a
+        href={href}
+        className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-sm text-white/80 hover:bg-white/20 transition"
+      >
+        {text}
+      </a>
+    );
+  }
   return (
     <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-sm text-white/80">
       {text}
@@ -329,11 +339,13 @@ export default async function HomePage() {
             </div>
 
             <div className="mt-7 flex flex-wrap gap-2">
-              {pill("BPM + Key filters")}
-              {pill("Tags + vibes")}
-              {pill("Shareable playlists")}
-              {pill("Comments")}
-              {pill("Luxury UI")}
+              {pill("R&B", "/explore?tags=r%26b")}
+              {pill("Hip-Hop", "/explore?tags=hip-hop")}
+              {pill("Afrobeats", "/explore?tags=afrobeats")}
+              {pill("House", "/explore?tags=house")}
+              {pill("Trap", "/explore?tags=trap")}
+              {pill("Dancehall", "/explore?tags=dancehall")}
+              {pill("Latin", "/explore?tags=latin")}
             </div>
           </div>
 

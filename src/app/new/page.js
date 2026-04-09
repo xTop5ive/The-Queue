@@ -247,26 +247,22 @@ export default function NewPage() {
   const router = useRouter();
   const supabase = useMemo(() => createBrowserClient(), []);
 
-  // Playlist fields
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState([]);
   const [isPublic, setIsPublic] = useState(true);
 
-  // DJ fields (optional)
   const [avgBpm, setAvgBpm] = useState("");
   const [energy, setEnergy] = useState("");
   const [clean, setClean] = useState(true);
-  const [keys, setKeys] = useState([]); // e.g. ["8A", "9A"]
+  const [keys, setKeys] = useState([]);
+  const [showDjStats, setShowDjStats] = useState(false);
 
-  // Tracks (multiple songs per playlist)
   const [tracks, setTracks] = useState([newEmptyTrack()]);
 
-  // Import from a YouTube playlist link
   const [ytPlaylistUrl, setYtPlaylistUrl] = useState("");
   const [importing, setImporting] = useState(false);
 
-  // YouTube search (Option 1: search inside app and add tracks)
   const [ytQuery, setYtQuery] = useState("");
   const [ytResults, setYtResults] = useState([]);
   const [ytSearching, setYtSearching] = useState(false);
@@ -274,11 +270,9 @@ export default function NewPage() {
   const [ytSearchError, setYtSearchError] = useState("");
   const ytSearchWrapRef = useRef(null);
 
-  // Cover upload
   const [coverFile, setCoverFile] = useState(null);
   const [coverPreview, setCoverPreview] = useState("");
 
-  // UX state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -617,43 +611,50 @@ export default function NewPage() {
     }
   }
 
-  const savedTracksCount = tracks.filter((t) => (t.title || "").trim() || (t.youtubeUrl || "").trim()).length;
+  const savedTracksCount = tracks.filter(
+    (t) => t.title.trim() || t.youtubeUrl.trim()
+  ).length;
+
+  const inputCls = "w-full px-4 py-2.5 rounded-xl bg-transparent border text-white outline-none text-sm placeholder-white/30";
+  const borderStyle = { borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" };
+  const cardStyle = {
+    borderColor: "color-mix(in srgb, var(--line) 70%, transparent)",
+    background: "color-mix(in srgb, var(--midnight) 80%, transparent)",
+  };
 
   return (
-    <div className="max-w-5xl mx-auto px-5 py-10">
-      <div className="text-white/70 mb-6">
-        <h1 className="text-3xl font-semibold text-white">New playlist</h1>
-        <p className="mt-1">Title, description, tags, cover, tracks. Then you can play it anywhere.</p>
+    <div className="max-w-3xl mx-auto px-5 py-10 pb-32">
+
+      {/* Header */}
+      <div className="mb-8">
+        <div className="text-xs uppercase tracking-widest font-medium mb-1" style={{ color: "var(--gold)" }}>
+          The Queue
+        </div>
+        <h1 className="text-3xl font-semibold text-white">New Playlist</h1>
+        <p className="text-white/50 mt-1 text-sm">Add your tracks, set the vibe, and publish.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Cover */}
-        <div
-          className="rounded-2xl border p-5"
-          style={{
-            borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-            background: "color-mix(in srgb, var(--midnight) 80%, transparent)",
-          }}
-        >
-          <div className="text-white font-semibold mb-3">Cover</div>
+      <form onSubmit={handleSubmit} className="space-y-5">
 
-          <div
-            className="rounded-2xl border overflow-hidden aspect-square flex items-center justify-center"
-            style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-          >
-            {coverPreview ? (
-              <img src={coverPreview} alt="Cover preview" className="w-full h-full object-cover" />
-            ) : (
-              <div className="text-center text-white/60">
-                <div className="font-semibold text-white/80">No cover yet</div>
-                <div className="text-sm mt-1">Upload a square image (PNG/JPG)</div>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 flex items-center gap-3">
-            <label className="inBtn cursor-pointer" style={{ display: "inline-flex" }}>
-              Upload cover
+        {/* ── Section 1: Cover + Basics ──────────────────────────────────── */}
+        <div className="rounded-2xl border p-6 grid md:grid-cols-[160px_1fr] gap-6" style={cardStyle}>
+          {/* Cover */}
+          <div>
+            <div
+              className="aspect-square rounded-xl border overflow-hidden flex items-center justify-center"
+              style={borderStyle}
+            >
+              {coverPreview ? (
+                <img src={coverPreview} alt="Cover" className="w-full h-full object-cover" />
+              ) : (
+                <div className="text-center px-3">
+                  <div className="text-2xl text-white/20 mb-1">♫</div>
+                  <div className="text-xs text-white/40">No cover</div>
+                </div>
+              )}
+            </div>
+            <label className="mt-3 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full border text-xs text-white/70 cursor-pointer hover:text-white transition" style={borderStyle}>
+              {coverFile ? "Change" : "Upload cover"}
               <input
                 type="file"
                 accept="image/*"
@@ -661,454 +662,412 @@ export default function NewPage() {
                 onChange={(e) => onPickCover(e.target.files?.[0] || null)}
               />
             </label>
-
-            {coverFile ? (
+            {coverFile && (
               <button
                 type="button"
-                className="px-3 py-2 rounded-full border text-white/80"
-                style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                className="mt-2 w-full text-xs text-white/40 hover:text-white/70 transition"
                 onClick={() => {
                   setCoverFile(null);
-                  setCoverPreview((prev) => {
-                    if (prev) URL.revokeObjectURL(prev);
-                    return "";
-                  });
+                  setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
                 }}
               >
                 Remove
               </button>
-            ) : null}
+            )}
           </div>
 
-          <div className="mt-2 text-xs text-white/50">Tip: 1000×1000 looks best.</div>
-        </div>
-
-        {/* Fields */}
-        <div
-          className="rounded-2xl border p-5"
-          style={{
-            borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-            background: "color-mix(in srgb, var(--midnight) 80%, transparent)",
-          }}
-        >
-          {/* Title */}
-          <label className="block text-white font-semibold">Title</label>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g., Late Night Gold"
-            className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-            style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-            maxLength={60}
-          />
-          <div className="mt-1 text-xs text-white/50">{title.length}/60</div>
-
-          {/* Description */}
-          <label className="block text-white font-semibold mt-5">Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="What’s the vibe? Who is this for?"
-            className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none min-h-[120px]"
-            style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-          />
-
-          {/* Tracks */}
-          <div
-            className="mt-6 rounded-xl border px-4 py-4"
-            style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-white font-semibold">Tracks</div>
-                <div className="text-xs text-white/60">
-                  Add songs using YouTube links. You’ll be able to play these anywhere in the app (Option B).
-                </div>
+          {/* Basics */}
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm font-medium text-white">Title <span style={{ color: "var(--gold)" }}>*</span></label>
+                <span className="text-xs text-white/30">{title.length}/60</span>
               </div>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g., Late Night Gold"
+                className={inputCls}
+                style={borderStyle}
+                maxLength={60}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-white mb-1.5 block">Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What's the vibe? Who is this for?"
+                rows={3}
+                className={`${inputCls} resize-none`}
+                style={borderStyle}
+              />
+            </div>
+
+            {/* Visibility + Clean row */}
+            <div className="flex flex-wrap gap-2 pt-1">
               <button
                 type="button"
-                className="px-4 py-2 rounded-full border text-sm"
+                onClick={() => setIsPublic((v) => !v)}
+                className="flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition"
                 style={{
-                  borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                  background: "color-mix(in srgb, var(--midnight) 85%, transparent)",
-                  color: "white",
-                }}
-                onClick={() => {
-                  setTracks((prev) => {
-                    const cur = Array.isArray(prev) ? prev : [];
-                    if (cur.length >= MAX_TRACKS) return cur;
-                    return [...cur, newEmptyTrack()];
-                  });
+                  ...borderStyle,
+                  background: isPublic ? "color-mix(in srgb, var(--gold) 14%, transparent)" : "transparent",
+                  color: isPublic ? "var(--gold)" : "var(--muted)",
                 }}
               >
-                + Add track
+                <span>{isPublic ? "🌐" : "🔒"}</span>
+                {isPublic ? "Public" : "Private"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setClean((v) => !v)}
+                className="flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition"
+                style={{
+                  ...borderStyle,
+                  background: "transparent",
+                  color: "var(--muted)",
+                }}
+              >
+                {clean ? "✓ Clean" : "Explicit"}
               </button>
             </div>
+          </div>
+        </div>
 
-            {/* Search YouTube (music category) and add tracks */}
-            <div className="mt-3 grid gap-2" ref={ytSearchWrapRef}>
-              <label className="block text-xs text-white/60">Search YouTube (music-only)</label>
-              <div className="relative">
-                <input
-                  value={ytQuery}
-                  onChange={(e) => setYtQuery(e.target.value)}
-                  onFocus={() => {
-                    if (ytResults.length || ytSearchError) setYtSearchOpen(true);
+        {/* ── Section 2: Tracks ──────────────────────────────────────────── */}
+        <div className="rounded-2xl border p-6" style={cardStyle}>
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h2 className="font-semibold text-white">Tracks</h2>
+              <p className="text-white/40 text-xs mt-0.5">
+                {savedTracksCount > 0
+                  ? `${savedTracksCount} track${savedTracksCount !== 1 ? "s" : ""} added`
+                  : "Add songs via search or YouTube link"}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="px-4 py-2 rounded-full border text-sm transition"
+              style={{ ...borderStyle, color: "white" }}
+              onClick={() => {
+                setTracks((prev) => {
+                  const cur = Array.isArray(prev) ? prev : [];
+                  if (cur.length >= MAX_TRACKS) return cur;
+                  return [...cur, newEmptyTrack()];
+                });
+              }}
+            >
+              + Add row
+            </button>
+          </div>
+
+          {/* Add tracks — search + import side by side */}
+          <div className="grid sm:grid-cols-2 gap-4 mb-6 pb-6 border-b" style={{ borderColor: "color-mix(in srgb, var(--line) 50%, transparent)" }}>
+            {/* YouTube search */}
+            <div ref={ytSearchWrapRef} className="relative">
+              <label className="text-xs text-white/50 mb-1.5 block">Search YouTube</label>
+              <input
+                value={ytQuery}
+                onChange={(e) => setYtQuery(e.target.value)}
+                onFocus={() => { if (ytResults.length || ytSearchError) setYtSearchOpen(true); }}
+                placeholder="Search a song to add…"
+                className={inputCls}
+                style={borderStyle}
+              />
+              {ytSearchOpen && (ytSearching || ytSearchError || ytResults.length > 0) && (
+                <div
+                  className="absolute left-0 right-0 mt-1.5 rounded-xl border overflow-hidden"
+                  style={{
+                    ...borderStyle,
+                    background: "color-mix(in srgb, var(--midnight) 96%, black)",
+                    zIndex: 30,
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
                   }}
-                  placeholder="Search songs (adds as tracks)…"
-                  className="w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-                  style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-                />
-
-                {/* Dropdown */}
-                {ytSearchOpen && (ytSearching || ytSearchError || ytResults.length) ? (
-                  <div
-                    className="absolute left-0 right-0 mt-2 rounded-xl border overflow-hidden"
-                    style={{
-                      borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                      background: "color-mix(in srgb, var(--midnight) 92%, black)",
-                      zIndex: 30,
-                    }}
-                  >
-                    {ytSearching ? (
-                      <div className="p-4 text-white/70 text-sm">Searching…</div>
-                    ) : ytSearchError ? (
-                      <div className="p-4 text-red-400 text-sm">{ytSearchError}</div>
-                    ) : (
-                      ytResults.map((it) => (
-                        <button
-                          key={it.videoId}
-                          type="button"
-                          className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-white/5"
-                          onClick={() => addTrackFromYouTube(it)}
-                        >
-                          <img
-                            src={it.thumb || "/assets/image/avatar_default.jpg"}
-                            alt=""
-                            className="w-12 h-12 rounded-lg object-cover border"
-                            style={{ borderColor: "color-mix(in srgb, var(--line) 70%, transparent)" }}
-                          />
-                          <div className="min-w-0">
-                            <div className="text-white font-semibold truncate">{it.title}</div>
-                            <div className="text-white/60 text-sm truncate">{it.channelTitle}</div>
-                          </div>
-                        </button>
-                      ))
-                    )}
-
-                    {!ytSearching && !ytSearchError && !ytResults.length ? (
-                      <div className="p-4 text-white/70 text-sm">No results</div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-              <div className="text-[11px] text-white/50">
-                Results are filtered to YouTube’s Music category, so you’ll still get “official audio” and lyric uploads when there’s no MV.
-              </div>
+                >
+                  {ytSearching ? (
+                    <div className="px-4 py-3 text-white/50 text-sm">Searching…</div>
+                  ) : ytSearchError ? (
+                    <div className="px-4 py-3 text-red-400 text-sm">{ytSearchError}</div>
+                  ) : ytResults.length === 0 ? (
+                    <div className="px-4 py-3 text-white/50 text-sm">No results</div>
+                  ) : (
+                    ytResults.map((it) => (
+                      <button
+                        key={it.videoId}
+                        type="button"
+                        className="w-full text-left flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 transition"
+                        onClick={() => addTrackFromYouTube(it)}
+                      >
+                        <img
+                          src={it.thumb || "/assets/image/avatar_default.jpg"}
+                          alt=""
+                          className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-white text-sm font-medium truncate">{it.title}</div>
+                          <div className="text-white/50 text-xs truncate">{it.channelTitle}</div>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Import a full YouTube playlist to auto-fill tracks */}
-            <div className="mt-3 grid gap-2">
-              <label className="block text-xs text-white/60">Import YouTube playlist (optional)</label>
+            {/* YouTube playlist import */}
+            <div>
+              <label className="text-xs text-white/50 mb-1.5 block">Import YouTube playlist</label>
               <div className="flex gap-2">
                 <input
                   value={ytPlaylistUrl}
                   onChange={(e) => setYtPlaylistUrl(e.target.value)}
-                  placeholder="Paste a YouTube playlist link (…?list=XXXX)"
-                  className="w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-                  style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+                  placeholder="Paste playlist link…"
+                  className={`${inputCls} flex-1`}
+                  style={borderStyle}
                 />
                 <button
                   type="button"
                   onClick={importYouTubePlaylist}
-                  disabled={importing}
-                  className="px-4 py-2 rounded-full border text-sm"
-                  style={{
-                    borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                    background: "color-mix(in srgb, var(--midnight) 85%, transparent)",
-                    color: "white",
-                    whiteSpace: "nowrap",
-                    opacity: importing ? 0.7 : 1,
-                  }}
+                  disabled={importing || !ytPlaylistUrl.trim()}
+                  className="px-4 py-2 rounded-full border text-sm whitespace-nowrap transition disabled:opacity-40"
+                  style={{ ...borderStyle, color: "white" }}
                 >
-                  {importing ? "Importing..." : "Import"}
+                  {importing ? "…" : "Import"}
                 </button>
               </div>
-              <div className="text-[11px] text-white/50">
-                This pulls videos from a public YouTube playlist and fills your tracks list automatically (up to {MAX_TRACKS}).
-              </div>
             </div>
+          </div>
 
-            <div className="mt-4 grid gap-3">
-              {tracks.map((t, idx) => {
-                const yid = parseYouTubeId(t.youtubeUrl);
-                return (
-                  <div
-                    key={idx}
-                    className="rounded-xl border p-3"
-                    style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
+          {/* Track rows */}
+          <div className="space-y-2">
+            {tracks.map((t, idx) => {
+              const yid = parseYouTubeId(t.youtubeUrl);
+              const hasUrl = t.youtubeUrl.trim().length > 0;
+              const urlValid = !hasUrl || !!yid;
+              return (
+                <div
+                  key={idx}
+                  className="flex items-center gap-2"
+                >
+                  <span className="text-white/25 text-xs w-5 text-right flex-shrink-0 select-none">{idx + 1}</span>
+
+                  <input
+                    value={t.title}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setTracks((prev) => { const c = [...prev]; c[idx] = { ...c[idx], title: v }; return c; });
+                    }}
+                    placeholder="Title"
+                    className={inputCls}
+                    style={borderStyle}
+                  />
+
+                  <input
+                    value={t.artist}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setTracks((prev) => { const c = [...prev]; c[idx] = { ...c[idx], artist: v }; return c; });
+                    }}
+                    placeholder="Artist"
+                    className={`${inputCls} hidden sm:block`}
+                    style={borderStyle}
+                  />
+
+                  <input
+                    value={t.youtubeUrl}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setTracks((prev) => { const c = [...prev]; c[idx] = { ...c[idx], youtubeUrl: v }; return c; });
+                    }}
+                    placeholder="YouTube link"
+                    className={inputCls}
+                    style={{
+                      ...borderStyle,
+                      borderColor: !urlValid
+                        ? "color-mix(in srgb, #f87171 60%, transparent)"
+                        : yid
+                        ? "color-mix(in srgb, var(--gold) 40%, transparent)"
+                        : borderStyle.borderColor,
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTracks((prev) => {
+                        const next = prev.filter((_, i) => i !== idx);
+                        return next.length ? next : [newEmptyTrack()];
+                      });
+                    }}
+                    className="text-white/25 hover:text-white/60 transition flex-shrink-0 text-lg leading-none px-1"
+                    title="Remove"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs text-white/60">Track {idx + 1}</div>
-                      {tracks.length > 1 ? (
-                        <button
-                          type="button"
-                          className="text-xs underline text-white/60 hover:text-white"
-                          onClick={() => {
-                            setTracks((prev) => {
-                              const cur = Array.isArray(prev) ? prev : [];
-                              const next = cur.filter((_, i) => i !== idx);
-                              return next.length ? next : [newEmptyTrack()];
-                            });
-                          }}
-                        >
-                          Remove
-                        </button>
-                      ) : null}
-                    </div>
-
-                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs text-white/60">Title</label>
-                        <input
-                          value={t.title}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setTracks((prev) => {
-                              const cur = Array.isArray(prev) ? [...prev] : [];
-                              cur[idx] = { ...cur[idx], title: v };
-                              return cur;
-                            });
-                          }}
-                          placeholder="Song title"
-                          className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-                          style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs text-white/60">Artist (optional)</label>
-                        <input
-                          value={t.artist}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setTracks((prev) => {
-                              const cur = Array.isArray(prev) ? [...prev] : [];
-                              cur[idx] = { ...cur[idx], artist: v };
-                              return cur;
-                            });
-                          }}
-                          placeholder="Artist"
-                          className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-                          style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs text-white/60">YouTube link or video id</label>
-                        <input
-                          value={t.youtubeUrl}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setTracks((prev) => {
-                              const cur = Array.isArray(prev) ? [...prev] : [];
-                              cur[idx] = { ...cur[idx], youtubeUrl: v };
-                              return cur;
-                            });
-                          }}
-                          placeholder="https://youtu.be/... or 11-char id"
-                          className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-                          style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-                        />
-                        {t.youtubeUrl.trim() ? (
-                          yid ? (
-                            <div className="mt-2 text-[11px] text-white/60">Parsed id: {yid}</div>
-                          ) : (
-                            <div className="mt-2 text-[11px] text-red-300">Invalid YouTube link/id.</div>
-                          )
-                        ) : (
-                          <div className="mt-2 text-[11px] text-white/50">Tip: paste a full YouTube URL.</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-3 text-xs text-white/50">
-              Tracks filled: {savedTracksCount} / {MAX_TRACKS}
-            </div>
+                    ×
+                  </button>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Tags */}
-          <div className="flex items-center justify-between mt-5">
-            <label className="text-white font-semibold">Tags</label>
-            <div className="text-xs text-white/50">Up to 10</div>
-          </div>
+          {tracks.length > 0 && (
+            <div className="mt-4 text-xs text-white/30 text-right">
+              {savedTracksCount} / {MAX_TRACKS} tracks
+            </div>
+          )}
+        </div>
 
-          <div className="mt-2">
+        {/* ── Section 3: Details ─────────────────────────────────────────── */}
+        <div className="rounded-2xl border p-6" style={cardStyle}>
+          <h2 className="font-semibold text-white mb-4">Details</h2>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-sm font-medium text-white">Tags</label>
+              <span className="text-xs text-white/30">up to 10</span>
+            </div>
             <TagInput value={tags} onChange={setTags} max={10} placeholder="Type a tag and press Enter" />
           </div>
 
-          {/* DJ filters (optional) */}
-          <div
-            className="mt-6 rounded-xl border px-4 py-4"
-            style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-          >
-            <div>
-              <div className="text-white font-semibold">DJ stats (optional)</div>
-              <div className="text-xs text-white/60">Helps people search by BPM, key, energy, and clean version.</div>
-            </div>
+          {/* DJ Stats — collapsible */}
+          <div className="mt-5">
+            <button
+              type="button"
+              onClick={() => setShowDjStats((v) => !v)}
+              className="flex items-center gap-2 text-sm transition"
+              style={{ color: showDjStats ? "var(--gold)" : "var(--muted)" }}
+            >
+              <span>{showDjStats ? "▾" : "▸"}</span>
+              DJ stats
+              <span className="text-xs opacity-60">(optional — BPM, key, energy)</span>
+            </button>
 
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-white/60">Avg BPM</label>
-                <input
-                  value={avgBpm}
-                  onChange={(e) => setAvgBpm(e.target.value.replace(/[^0-9]/g, ""))}
-                  inputMode="numeric"
-                  placeholder="e.g., 124"
-                  className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-                  style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-                />
-                <div className="mt-1 text-[11px] text-white/50">40–220</div>
-              </div>
-
-              <div>
-                <label className="block text-xs text-white/60">Energy (0–10)</label>
-                <input
-                  value={energy}
-                  onChange={(e) => setEnergy(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
-                  inputMode="numeric"
-                  placeholder="e.g., 7"
-                  className="mt-2 w-full px-4 py-3 rounded-xl bg-transparent border text-white outline-none"
-                  style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-                />
-                <div className="mt-1 text-[11px] text-white/50">0–10</div>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs text-white/60">Key (Camelot)</label>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {[
-                    "1A","2A","3A","4A","5A","6A","7A","8A","9A","10A","11A","12A",
-                    "1B","2B","3B","4B","5B","6B","7B","8B","9B","10B","11B","12B",
-                  ].map((k) => {
-                    const active = (keys || []).includes(k);
-                    return (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => {
-                          setKeys((prev) => {
-                            const cur = Array.isArray(prev) ? prev : [];
-                            if (cur.includes(k)) return cur.filter((x) => x !== k);
-                            if (cur.length >= 4) return cur;
-                            return [...cur, k];
-                          });
-                        }}
-                        className="px-3 py-1 rounded-full border text-sm"
-                        style={{
-                          borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                          background: active ? "color-mix(in srgb, var(--gold) 16%, transparent)" : "transparent",
-                          color: "white",
-                        }}
-                        aria-pressed={active}
-                      >
-                        {k}
-                      </button>
-                    );
-                  })}
-
-                  {(keys || []).length ? (
-                    <button
-                      type="button"
-                      onClick={() => setKeys([])}
-                      className="px-3 py-1 rounded-full border text-sm"
-                      style={{
-                        borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                        background: "transparent",
-                        color: "rgba(255,255,255,.7)",
-                      }}
-                    >
-                      Clear keys
-                    </button>
-                  ) : null}
-                </div>
-                <div className="mt-2 text-[11px] text-white/50">Pick up to 4 keys.</div>
-              </div>
-
-              <div
-                className="sm:col-span-2 flex items-center justify-between rounded-xl border px-4 py-3"
-                style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-              >
+            {showDjStats && (
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <div className="text-white font-semibold">Version</div>
-                  <div className="text-xs text-white/60">Clean playlists show up when people filter “Clean only”.</div>
+                  <label className="text-xs text-white/50 mb-1.5 block">Avg BPM</label>
+                  <input
+                    value={avgBpm}
+                    onChange={(e) => setAvgBpm(e.target.value.replace(/[^0-9]/g, ""))}
+                    inputMode="numeric"
+                    placeholder="e.g., 124"
+                    className={inputCls}
+                    style={borderStyle}
+                  />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setClean((v) => !v)}
-                  className="px-4 py-2 rounded-full border text-sm"
-                  style={{
-                    borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                    background: clean ? "color-mix(in srgb, var(--gold) 16%, transparent)" : "transparent",
-                    color: "white",
-                  }}
+                <div>
+                  <label className="text-xs text-white/50 mb-1.5 block">Energy (0–10)</label>
+                  <input
+                    value={energy}
+                    onChange={(e) => setEnergy(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
+                    inputMode="numeric"
+                    placeholder="e.g., 7"
+                    className={inputCls}
+                    style={borderStyle}
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-xs text-white/50 mb-2 block">Key — Camelot (up to 4)</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      "1A","2A","3A","4A","5A","6A","7A","8A","9A","10A","11A","12A",
+                      "1B","2B","3B","4B","5B","6B","7B","8B","9B","10B","11B","12B",
+                    ].map((k) => {
+                      const active = (keys || []).includes(k);
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => {
+                            setKeys((prev) => {
+                              const cur = Array.isArray(prev) ? prev : [];
+                              if (cur.includes(k)) return cur.filter((x) => x !== k);
+                              if (cur.length >= 4) return cur;
+                              return [...cur, k];
+                            });
+                          }}
+                          className="px-2.5 py-1 rounded-full border text-xs transition"
+                          style={{
+                            ...borderStyle,
+                            background: active ? "color-mix(in srgb, var(--gold) 16%, transparent)" : "transparent",
+                            color: active ? "var(--gold)" : "var(--muted)",
+                          }}
+                        >
+                          {k}
+                        </button>
+                      );
+                    })}
+                    {keys.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setKeys([])}
+                        className="px-2.5 py-1 rounded-full border text-xs"
+                        style={{ ...borderStyle, color: "var(--muted)" }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className="sm:col-span-2 flex items-center justify-between rounded-xl border px-4 py-3"
+                  style={borderStyle}
                 >
-                  {clean ? "Clean" : "Explicit"}
-                </button>
+                  <div>
+                    <div className="text-sm font-medium text-white">Version</div>
+                    <div className="text-xs text-white/40">Clean playlists appear in clean-only filters.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setClean((v) => !v)}
+                    className="px-4 py-2 rounded-full border text-sm transition"
+                    style={{
+                      ...borderStyle,
+                      background: clean ? "color-mix(in srgb, var(--gold) 14%, transparent)" : "transparent",
+                      color: clean ? "var(--gold)" : "var(--muted)",
+                    }}
+                  >
+                    {clean ? "Clean" : "Explicit"}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
-
-          {/* Visibility */}
-          <div
-            className="mt-5 flex items-center justify-between rounded-xl border px-4 py-3"
-            style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-          >
-            <div>
-              <div className="text-white font-semibold">Visibility</div>
-              <div className="text-xs text-white/60">Public playlists show up in Explore.</div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setIsPublic((v) => !v)}
-              className="px-4 py-2 rounded-full border text-sm"
-              style={{
-                borderColor: "color-mix(in srgb, var(--line) 80%, transparent)",
-                background: isPublic ? "color-mix(in srgb, var(--gold) 16%, transparent)" : "transparent",
-                color: "white",
-              }}
-            >
-              {isPublic ? "Public" : "Private"}
-            </button>
-          </div>
-
-          {/* Errors */}
-          {error ? <div className="mt-4 text-red-400 text-sm">{error}</div> : null}
-
-          {/* Actions */}
-          <div className="mt-6 flex items-center gap-3">
-            <button type="submit" className="inBtn" disabled={loading}>
-              {loading ? "Saving..." : "Create playlist"}
-            </button>
-
-            <button
-              type="button"
-              className="px-4 py-2 rounded-full border text-white/80"
-              style={{ borderColor: "color-mix(in srgb, var(--line) 80%, transparent)" }}
-              onClick={() => router.push("/explore")}
-            >
-              Cancel
-            </button>
-          </div>
-
-          <div className="mt-2 text-xs text-white/50">Next: add real playback + comments.</div>
         </div>
+
+        {/* ── Submit ─────────────────────────────────────────────────────── */}
+        {error && (
+          <div
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{
+              background: "color-mix(in srgb, #f87171 10%, transparent)",
+              border: "1px solid color-mix(in srgb, #f87171 40%, transparent)",
+              color: "#fca5a5",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <div className="flex items-center gap-3 pb-4">
+          <button type="submit" className="inBtn" disabled={loading}>
+            {loading ? "Creating…" : "Create playlist"}
+          </button>
+          <button
+            type="button"
+            className="px-5 py-2.5 rounded-full border text-sm transition"
+            style={{ ...borderStyle, color: "var(--muted)" }}
+            onClick={() => router.push("/explore")}
+          >
+            Cancel
+          </button>
+        </div>
+
       </form>
     </div>
   );

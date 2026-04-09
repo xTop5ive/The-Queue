@@ -442,6 +442,19 @@ const Navbar = () => {
                       </span>
                     </Link>
                     <Link
+                      href="/communities"
+                      className="link"
+                      onClick={() => setProfileMenu(false)}
+                    >
+                      <div className="leftSide">
+                        <span className="icon">🎵</span>
+                        <span className="name" style={{ color: "#111" }}>Communities</span>
+                      </div>
+                      <span className="actionIcon">
+                        <FaAngleRight />
+                      </span>
+                    </Link>
+                    <Link
                       href={`/explore`}
                       className="link"
                       onClick={() => setProfileMenu(false)}

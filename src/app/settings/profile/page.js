@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase-browser";
+import AvatarCropper from "@/components/AvatarCropper";
 
 function capitalizeLines(value) {
   return String(value || "")
@@ -116,6 +117,7 @@ export default function ProfileSettingsPage() {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarError, setAvatarError] = useState("");
+  const [cropSrc, setCropSrc] = useState(null);
   const [favoriteArtistsText, setFavoriteArtistsText] = useState("");
   const [favoriteAlbumsText, setFavoriteAlbumsText] = useState("");
   const [favoriteProducersText, setFavoriteProducersText] = useState("");
@@ -184,30 +186,37 @@ export default function ProfileSettingsPage() {
     return () => { alive = false; };
   }, [router, supabase]);
 
-  async function handleAvatarUpload(e) {
+  function handleAvatarUpload(e) {
     const file = e.target.files?.[0];
-    if (!file || !viewer?.id) return;
+    if (!file) return;
+    e.target.value = "";
 
     const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
     if (!allowed.includes(file.type)) {
       setAvatarError("Only JPEG, PNG, WEBP, or GIF allowed.");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setAvatarError("Image must be under 5MB.");
+    if (file.size > 10 * 1024 * 1024) {
+      setAvatarError("Image must be under 10MB.");
       return;
     }
 
+    setAvatarError("");
+    setCropSrc(URL.createObjectURL(file));
+  }
+
+  const handleCropConfirm = useCallback(async (blob) => {
+    setCropSrc(null);
+    if (!viewer?.id) return;
     try {
       setAvatarUploading(true);
       setAvatarError("");
 
-      const ext = file.name.split(".").pop();
-      const path = `avatars/${viewer.id}.${ext}`;
+      const path = `avatars/${viewer.id}.jpg`;
 
       const { error: uploadErr } = await supabase.storage
         .from("covers")
-        .upload(path, file, { upsert: true, contentType: file.type });
+        .upload(path, blob, { upsert: true, contentType: "image/jpeg" });
 
       if (uploadErr) throw uploadErr;
 
@@ -215,13 +224,15 @@ export default function ProfileSettingsPage() {
       const publicUrl = urlData?.publicUrl;
       if (!publicUrl) throw new Error("Could not get public URL.");
 
-      setAvatarUrl(publicUrl);
+      setAvatarUrl(publicUrl + `?t=${Date.now()}`);
     } catch (err) {
       setAvatarError(err?.message || "Upload failed.");
     } finally {
       setAvatarUploading(false);
     }
-  }
+  }, [viewer, supabase]);
+
+  const handleCropCancel = useCallback(() => setCropSrc(null), []);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -269,6 +280,13 @@ export default function ProfileSettingsPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-5 py-10">
+      {cropSrc && (
+        <AvatarCropper
+          imageSrc={cropSrc}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
+      )}
       <div className="flex items-center gap-3 mb-8">
         <Link href="/settings" className="text-sm text-white/50 hover:text-white">
           ← Settings
