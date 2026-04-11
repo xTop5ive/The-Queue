@@ -3,18 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
-
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !anon) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
-
-  return createClient(url, anon, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-  });
-}
+import { createBrowserClient } from "@/lib/supabase-browser";
 
 function fmtHandle(h) {
   const v = String(h || "").trim();
@@ -48,7 +37,7 @@ function titleCase(value) {
 export default function ProfilePage() {
   const params = useParams();
   const router = useRouter();
-  const supabase = useMemo(() => getSupabase(), []);
+  const supabase = useMemo(() => createBrowserClient(), []);
 
   const handleParam =
     typeof params?.handle === "string" ? params.handle : Array.isArray(params?.handle) ? params.handle[0] : "";

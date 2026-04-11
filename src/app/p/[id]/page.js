@@ -6,7 +6,7 @@ import { usePlayerContext } from "@/app/components/player/PlayerProvider";
 import CommentsSection from "@/app/components/CommentsSection";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@/lib/supabase-browser";
 
 function fmtDate(d) {
   try {
@@ -14,23 +14,6 @@ function fmtDate(d) {
   } catch {
     return "";
   }
-}
-
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !anon) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  }
-
-  return createClient(url, anon, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  });
 }
 
 function fmtHandle(h) {
@@ -113,7 +96,7 @@ export default function PlaylistPage() {
 
   const id = typeof params?.id === "string" ? params.id : Array.isArray(params?.id) ? params.id[0] : "";
 
-  const supabase = useMemo(() => getSupabase(), []);
+  const supabase = useMemo(() => createBrowserClient(), []);
 
   // --- Global Player Context (if available) ---
   const player = usePlayerContext?.() || null;
@@ -199,7 +182,7 @@ export default function PlaylistPage() {
         if (alive) setUser(u);
 
         // Playlist
-        const { data: row, error } = await supabase.from("playlists").select("*").eq("id", id).single();
+        const { data: row, error } = await supabase.from("playlists").select("id,user_id,title,description,cover_url,cover_path,tags,is_public,created_at,likes_count,owner_handle,youtube_video_id,avg_bpm,energy,clean,keys").eq("id", id).single();
         if (error || !row) {
           // keep it simple: bounce to explore
           router.replace("/explore");
@@ -272,7 +255,7 @@ export default function PlaylistPage() {
         if (ownerId) {
           const { data: rows } = await supabase
             .from("playlists")
-            .select("*")
+            .select("id,user_id,title,description,cover_url,tags,is_public,created_at,likes_count,owner_handle")
             .eq("user_id", ownerId)
             .neq("id", normalized.id)
             .eq("is_public", true)

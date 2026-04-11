@@ -3,16 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
-
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  return createClient(url, anon, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-  });
-}
+import { createBrowserClient } from "@/lib/supabase-browser";
 
 function normTag(t) {
   return String(t || "").trim().toLowerCase();
@@ -53,7 +44,7 @@ const QUICK_TAGS = ["r&b", "hip-hop", "pop", "afrobeats", "edm", "rock", "countr
 export default function ExplorePage() {
   const router = useRouter();
   const sp = useSearchParams();
-  const supabase = useMemo(() => getSupabase(), []);
+  const supabase = useMemo(() => createBrowserClient(), []);
 
   const q = (sp?.get("q") || "").trim();
   const sort = sp?.get("sort") === "top" ? "top" : "new";
