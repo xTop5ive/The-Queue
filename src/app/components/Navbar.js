@@ -170,7 +170,6 @@ const Navbar = () => {
         }))
       );
     } catch (err) {
-      console.log("Search error:", err);
       setSearchedPlaylists([]);
       setSearchedUsers([]);
     }

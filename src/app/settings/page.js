@@ -169,7 +169,6 @@ export default function SettingsHubPage() {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       const json = await res.json();
-      console.log("[delete account]", res.status, json);
       if (!res.ok) throw new Error(json?.error || "Deletion failed.");
 
       await supabase.auth.signOut();

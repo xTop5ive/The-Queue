@@ -97,26 +97,38 @@ export default function CommunitiesPage() {
 
   const q = search.trim().toLowerCase();
 
-  const searchFiltered = q
-    ? communities.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          (c.description || "").toLowerCase().includes(q)
-      )
-    : communities;
-
-  // Categorised for explore
   const byCategory = useMemo(() => {
     const map = { genres: [], regions: [], vibes: [], community: [] };
     for (const c of communities) map[categorize(c)].push(c);
     return map;
   }, [communities]);
 
-  const myCommunities = communities.filter((c) => joined.has(c.slug));
+  const myCommunities = useMemo(
+    () => communities.filter((c) => joined.has(c.slug)),
+    [communities, joined]
+  );
+
+  const searchFiltered = useMemo(() => {
+    if (!q) return communities;
+    return communities.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.description || "").toLowerCase().includes(q)
+    );
+  }, [communities, q]);
+
+  const mySearchFiltered = useMemo(() => {
+    if (!q) return myCommunities;
+    return myCommunities.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.description || "").toLowerCase().includes(q)
+    );
+  }, [myCommunities, q]);
 
   const displayList =
     activeTab === "mine"
-      ? (q ? myCommunities.filter((c) => c.name.toLowerCase().includes(q) || (c.description||"").toLowerCase().includes(q)) : myCommunities)
+      ? mySearchFiltered
       : (q ? searchFiltered : byCategory[activeCategory] || []);
 
   return (

@@ -175,7 +175,6 @@ export default function CommunityPage() {
           .order("created_at", { ascending: false })
           .limit(30);
         if (error) {
-          console.error("community_posts fetch error:", error);
           setPostsError(error.message || JSON.stringify(error));
           return;
         }

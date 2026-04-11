@@ -51,7 +51,6 @@ export default function LikeButton({ playlistId, initialCount = 0 }) {
       // refresh server components so Explore/Home cards update too
       router.refresh();
     } catch (e) {
-      console.error(e);
       alert("Please sign in to like playlists.");
     } finally {
       setLoading(false);

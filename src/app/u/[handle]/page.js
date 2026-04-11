@@ -192,7 +192,6 @@ export default function ProfilePage() {
         setFollowersCount((c) => c + 1);
       }
     } catch (e) {
-      console.error("Follow error:", e);
     } finally {
       setFollowLoading(false);
     }
