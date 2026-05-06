@@ -69,7 +69,7 @@ async function fetchPlaylistPage({ playlistId, apiKey, pageToken = "", maxResult
 
     tracks.push({
       title,
-      artist: sn?.videoOwnerChannelTitle || "",
+      artist: (sn?.videoOwnerChannelTitle || "").replace(/\s*-\s*topic\s*$/i, "").trim(),
       youtube_video_id: vid,
     });
   }

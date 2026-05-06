@@ -74,6 +74,7 @@ export default function ExplorePage() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
   const [handlesByUserId, setHandlesByUserId] = useState({});
+  const [trackCountMap, setTrackCountMap] = useState({});
   const [error, setError] = useState("");
   const [djWarning, setDjWarning] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -225,6 +226,20 @@ export default function ExplorePage() {
     })();
     return () => { alive = false; };
   }, [supabase, q, tagsParam, sort, bpmMin, bpmMax, energyMin, clean, key]);
+
+  useEffect(() => {
+    if (!rows.length) { setTrackCountMap({}); return; }
+    let alive = true;
+    (async () => {
+      const ids = rows.map((r) => r.id).filter(Boolean);
+      const { data } = await supabase.from("playlist_tracks").select("playlist_id").in("playlist_id", ids);
+      if (!alive) return;
+      const map = {};
+      (data || []).forEach((r) => { if (r.playlist_id) map[r.playlist_id] = (map[r.playlist_id] || 0) + 1; });
+      setTrackCountMap(map);
+    })();
+    return () => { alive = false; };
+  }, [rows, supabase]);
 
   useEffect(() => {
     let alive = true;
@@ -733,8 +748,14 @@ export default function ExplorePage() {
                     >
                       @{rawHandle}
                     </Link>
-                    <span className="text-xs flex-shrink-0 ml-2" style={{ color: "var(--muted)" }}>
-                      &#9829; {p.likes}
+                    <span className="text-xs flex-shrink-0 ml-2 flex items-center gap-1.5" style={{ color: "var(--muted)" }}>
+                      <span>&#9829; {p.likes}</span>
+                      {trackCountMap[p.id] > 0 && (
+                        <>
+                          <span className="opacity-40">·</span>
+                          <span>{trackCountMap[p.id]} tracks</span>
+                        </>
+                      )}
                     </span>
                   </div>
                   {(p.tags || []).length > 0 && (

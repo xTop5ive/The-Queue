@@ -509,9 +509,9 @@ export default function PlaylistPage() {
           background: "color-mix(in srgb, var(--midnight) 80%, transparent)",
         }}
       >
-        <div className="grid md:grid-cols-[280px_1fr] gap-0">
-          {/* Cover */}
-          <div className="relative" style={{ minHeight: 280 }}>
+        <div className="flex flex-col">
+          {/* Cover — full-width hero */}
+          <div className="relative w-full" style={{ height: 420 }}>
             {p.coverUrl ? (
               <img
                 src={p.coverUrl}

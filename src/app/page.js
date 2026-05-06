@@ -16,7 +16,7 @@ function pickFeaturedGenre() {
   return genres[dayOfYear % genres.length];
 }
 
-function mapPlaylist(row, handleByUserId) {
+function mapPlaylist(row, handleByUserId, trackCountMap) {
   return {
     id: row.id,
     title: row.title,
@@ -32,6 +32,7 @@ function mapPlaylist(row, handleByUserId) {
     energy: typeof row.energy === "number" ? row.energy : null,
     clean: typeof row.clean === "boolean" ? row.clean : null,
     keys: Array.isArray(row.keys) ? row.keys : [],
+    tracksCount: trackCountMap?.[row.id] ?? 0,
   };
 }
 
@@ -100,8 +101,14 @@ function Card({ p }) {
           ) : (
             <span />
           )}
-          <span className="text-xs flex-shrink-0 ml-2" style={{ color: "var(--muted)" }}>
-            &#9829; {p.likes ?? 0}
+          <span className="text-xs flex-shrink-0 ml-2 flex items-center gap-1.5" style={{ color: "var(--muted)" }}>
+            <span>&#9829; {p.likes ?? 0}</span>
+            {p.tracksCount > 0 && (
+              <>
+                <span className="opacity-40">·</span>
+                <span>{p.tracksCount} tracks</span>
+              </>
+            )}
           </span>
         </div>
 
@@ -210,7 +217,21 @@ export default async function HomePage() {
     });
   }
 
-  const publicPlaylists = (baseRows || []).map((r) => mapPlaylist(r, handleByUserId));
+  const trackCountMap = {};
+  {
+    const pIds = (baseRows || []).map((r) => r.id).filter(Boolean);
+    if (pIds.length) {
+      const { data: tcRows } = await supabase
+        .from("playlist_tracks")
+        .select("playlist_id")
+        .in("playlist_id", pIds);
+      (tcRows || []).forEach((r) => {
+        if (r.playlist_id) trackCountMap[r.playlist_id] = (trackCountMap[r.playlist_id] || 0) + 1;
+      });
+    }
+  }
+
+  const publicPlaylists = (baseRows || []).map((r) => mapPlaylist(r, handleByUserId, trackCountMap));
 
   const hot = [...publicPlaylists].sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0)).slice(0, 6);
   const newest = [...publicPlaylists]
@@ -377,7 +398,7 @@ export default async function HomePage() {
                 }}
               />
               <img
-                src="/Stylized%20%27Q%27%20Monogram%20with%20Play%20Button.png"
+                src="/brand-logo.png"
                 alt="The Queue"
                 className="relative w-28 h-28 object-contain"
               />
